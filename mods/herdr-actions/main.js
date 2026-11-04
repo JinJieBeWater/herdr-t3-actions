@@ -21,7 +21,7 @@ const lit = (view, id, color = theme().dim) => (view.hot === id ? theme().foregr
 
 // A hover label as T3 Code's tooltip: `.tooltip()` takes only a string, in the shell's own style. Only while lit: a dialog
 // opened from the button hides the pointer's leaving, and the card would stay up over it.
-const tip = (hot, t, id, label, trigger) => HoverCard.new(`tip-${id}`).anchor("top_center").open_delay(300).close_delay(0).trigger(trigger)
+const tip = (hot, t, id, label, trigger) => HoverCard.new(`tip-${id}`).anchor("top_center").open_delay(150).close_delay(0).trigger(trigger)
   .content(hot !== id ? div() : div().mt(4).px(8).py(4).rounded(6).border(1).border_color(t.border).bg(t.chrome).shadow_md().text_size(12).text_color(t.foreground).child(label));
 
 // { list: [{ id, name, command, icon, place, cwd }], last: id }
@@ -53,7 +53,7 @@ function deleteAction(id) {
 function control(view, t, stop) {
   const s = state(), main = primary(s);
   const box = (id) => h_flex().id(id).h(26).flex_none().items_center().rounded(6).border(1).border_color(t.border).text_size(12).on_mouse_down("left", stop);
-  if (!main) return tip(view.hot, t, "action-add", "A command you start with one click", box("action-add").px(8).gap(8).text_color(lit(view, "action-add")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-add"))
+  if (!main) return tip(view.hot, t, "action-add", "Add action", box("action-add").px(8).gap(8).text_color(lit(view, "action-add")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-add"))
     // The dialog covers it, before the pointer can report leaving it.
     .role("button").accessibility_label("Add action").on_click((_e, cx) => { view.hot = null; editor(null); cx.notify(); })
     .child(icon("play").size(14)).child("Add action"));
