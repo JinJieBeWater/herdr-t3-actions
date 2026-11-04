@@ -118,6 +118,18 @@ fire(find(load().render(), "actions-fit"), "on_size_change", { width: 220 });
 assert.equal(calls.length, 1);
 assert.ok([bar.render(), find(bar.render(), "actions"), find(bar.render(), "action-run")].every(n => !n.style.bg), "no fill at rest: the bar's own background shows");
 
+// In a narrow bar the icon stands alone; the hover label and the accessibility label keep the name.
+state["bar.compact"] = true;
+assert.deepEqual(strings(find(bar.render(), "action-run")), []);
+assert.equal(find(bar.render(), "action-run").style.accessibility_label, "Run Test");
+assert.ok(find(bar.render(), "action-more"), "the menu stays");
+const added = state["t3-actions"];
+state["t3-actions"] = { list: [] };
+assert.deepEqual(strings(find(bar.render(), "action-add")), []);
+assert.equal(find(bar.render(), "action-add").style.accessibility_label, "Add action");
+state["t3-actions"] = added;
+delete state["bar.compact"];
+
 (async () => {
   // What opens over its button drops its hover: the pointer can't report leaving.
   state["t3-actions"] = { list: [{ id: "a1", name: "Dev", command: "x" }, { id: "a2", name: "Test", command: "y" }] };

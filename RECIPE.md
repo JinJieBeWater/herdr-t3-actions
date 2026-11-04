@@ -20,6 +20,7 @@ T3 Code's run button for Herdr App's top bar: `▶ <name> | ▾` runs the action
 
 - `mods/herdr-actions/main.js`: one mod, three roles by `props().actions`: none (the control), `"menu"`, `"edit"`; the control opens the other two with `openOverlay({ mod: "herdr-actions", … })`.
 - It sizes its own block: `on_size_change` on a `flex_none` wrapper (the control and its 8px) reports its full width even when the block is narrower; divided by `settings().zoom` (it reports zoomed pixels), it goes to `run("layout.resize", { id: props().block, px })`, only when it changed. Herdr keeps that size with the layout's clicks.
+- With `shared("bar.compact")` true (Herdr T3's bar sets it under 768px; unset elsewhere), the control drops its text: `▶`, or `▶ | ▾`. Hover labels and accessibility labels keep the names.
 - Icons: `mods/herdr-actions/action-*.svg` (lucide), Herdr's `mods/workspace-chrome/chevron-down.svg`, `settings.svg`, `plus.svg`.
 
 ## Watch out
