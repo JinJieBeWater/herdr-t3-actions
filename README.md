@@ -10,18 +10,18 @@ It is the Actions control of the [Herdr T3 layout](https://github.com/JinJieBeWa
 
 ## Install
 
-Ask your Herdr agent to add `herdr.dev/mods/JinJieBeWater/herdr-actions`, or copy `mods/herdr-actions/` into `~/.config/herdr-app/mods/`. Then put it in your layout's top bar: a block in a `row` with `"resizable": false`, the block's own `id` in `props.block`. The control sizes that block to itself:
+Ask your Herdr agent to add `herdr.dev/mods/JinJieBeWater/herdr-t3-actions`, or copy `mods/t3-actions/` into `~/.config/herdr-app/mods/`. Then put it in your layout's top bar: a block in a `row` with `"resizable": false`, the block's own `id` in `props.block`. The control sizes that block to itself:
 
 ```json
 { "id": "actions", "type": "block", "size": { "px": 112 }, "window_drag": true,
-  "content": { "mod": "herdr-actions", "props": { "block": "actions" } } }
+  "content": { "mod": "t3-actions", "props": { "block": "actions" } } }
 ```
 
 Herdr T3 already has it. Without `props.block` the block keeps the size the layout gives it.
 
 ## Update
 
-Herdr doesn't update mods from others, and adding this again would install a renamed second copy, since an install never overwrites. Overwrite `mods/herdr-actions/` with the repo's latest instead (tell your Herdr agent, or copy the files), then run `herdr-app check` on it. Your actions are kept: they live in `shared.json` (`t3-actions`, the name they had in Herdr T3).
+Herdr doesn't update mods from others, and adding this again would install a renamed second copy, since an install never overwrites. Overwrite `mods/t3-actions/` with the repo's latest instead (tell your Herdr agent, or copy the files), then run `herdr-app check` on it. Your actions are kept: they live in `shared.json` (under `t3-actions`).
 
 ## What it runs
 
@@ -29,7 +29,7 @@ Only the commands you save, each through `sh -c` in a new terminal (`terminal.op
 
 ## Develop
 
-`node mods/herdr-actions/check.cjs` runs the mod without a window; `herdr-app check mods/herdr-actions` loads it in Herdr.
+`node mods/t3-actions/check.cjs` runs the mod without a window; `herdr-app check mods/t3-actions` loads it in Herdr.
 
 ## License
 

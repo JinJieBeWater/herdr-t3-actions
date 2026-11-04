@@ -10,18 +10,18 @@
 
 ## 安装
 
-让你的 Herdr agent 添加 `herdr.dev/mods/JinJieBeWater/herdr-actions`，或者把 `mods/herdr-actions/` 复制进 `~/.config/herdr-app/mods/`。然后放进布局的顶栏：放在一个 `"resizable": false` 的 `row` 里，块自己的 `id` 写进 `props.block`。控件会把这个块调整到自己的宽度：
+让你的 Herdr agent 添加 `herdr.dev/mods/JinJieBeWater/herdr-t3-actions`，或者把 `mods/t3-actions/` 复制进 `~/.config/herdr-app/mods/`。然后放进布局的顶栏：放在一个 `"resizable": false` 的 `row` 里，块自己的 `id` 写进 `props.block`。控件会把这个块调整到自己的宽度：
 
 ```json
 { "id": "actions", "type": "block", "size": { "px": 112 }, "window_drag": true,
-  "content": { "mod": "herdr-actions", "props": { "block": "actions" } } }
+  "content": { "mod": "t3-actions", "props": { "block": "actions" } } }
 ```
 
 Herdr T3 里已经放好了。没有 `props.block` 时，块保持布局给的宽度。
 
 ## 更新
 
-Herdr 不会更新别人做的 mod，再添加一次只会装出一份改了名的副本，因为安装从不覆盖。更新要用仓库最新的文件覆盖 `mods/herdr-actions/`（让 Herdr agent 做，或者手动复制），再对它跑 `herdr-app check`。你的动作会保留：它们存在 `shared.json` 里（`t3-actions`，沿用在 Herdr T3 时的名字）。
+Herdr 不会更新别人做的 mod，再添加一次只会装出一份改了名的副本，因为安装从不覆盖。更新要用仓库最新的文件覆盖 `mods/t3-actions/`（让 Herdr agent 做，或者手动复制），再对它跑 `herdr-app check`。你的动作会保留：它们存在 `shared.json` 里（键名 `t3-actions`）。
 
 ## 会运行什么
 
@@ -29,7 +29,7 @@ Herdr 不会更新别人做的 mod，再添加一次只会装出一份改了名�
 
 ## 开发
 
-`node mods/herdr-actions/check.cjs` 不开窗口就能跑通这个 mod；`herdr-app check mods/herdr-actions` 在 Herdr 里加载它。
+`node mods/t3-actions/check.cjs` 不开窗口就能跑通这个 mod；`herdr-app check mods/t3-actions` 在 Herdr 里加载它。
 
 ## 许可
 
