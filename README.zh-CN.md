@@ -13,7 +13,7 @@
 让你的 Herdr agent 添加 `herdr.dev/mods/JinJieBeWater/herdr-t3-actions`，或者把 `mods/t3-actions/` 复制进 `~/.config/herdr-app/mods/`。然后放进布局的顶栏：放在一个 `"resizable": false` 的 `row` 里，块自己的 `id` 写进 `props.block`。控件会把这个块调整到自己的宽度：
 
 ```json
-{ "id": "actions", "type": "block", "size": { "px": 112 }, "window_drag": true,
+{ "id": "actions", "type": "block", "size": { "px": 108 }, "window_drag": true,
   "content": { "mod": "t3-actions", "props": { "block": "actions" } } }
 ```
 

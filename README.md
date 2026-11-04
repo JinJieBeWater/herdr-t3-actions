@@ -13,7 +13,7 @@ It is the Actions control of the [Herdr T3 layout](https://github.com/JinJieBeWa
 Ask your Herdr agent to add `herdr.dev/mods/JinJieBeWater/herdr-t3-actions`, or copy `mods/t3-actions/` into `~/.config/herdr-app/mods/`. Then put it in your layout's top bar: a block in a `row` with `"resizable": false`, the block's own `id` in `props.block`. The control sizes that block to itself:
 
 ```json
-{ "id": "actions", "type": "block", "size": { "px": 112 }, "window_drag": true,
+{ "id": "actions", "type": "block", "size": { "px": 108 }, "window_drag": true,
   "content": { "mod": "t3-actions", "props": { "block": "actions" } } }
 ```
 
