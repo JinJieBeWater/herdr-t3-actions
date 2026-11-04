@@ -53,16 +53,17 @@ function deleteAction(id) {
 function control(view, t, stop) {
   const s = state(), main = primary(s);
   const box = (id) => h_flex().id(id).h(26).flex_none().items_center().rounded(6).border(1).border_color(t.border).text_size(12).on_mouse_down("left", stop);
-  if (!main) return box("action-add").px(8).gap(8).text_color(lit(view, "action-add")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-add"))
+  if (!main) return tip(view.hot, t, "action-add", "A command you start with one click", box("action-add").px(8).gap(8).text_color(lit(view, "action-add")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-add"))
     // The dialog covers it, before the pointer can report leaving it.
     .role("button").accessibility_label("Add action").on_click((_e, cx) => { view.hot = null; editor(null); cx.notify(); })
-    .child(icon("play").size(14)).child("Add action");
+    .child(icon("play").size(14)).child("Add action"));
   return box("actions").text_color(t.dim)
-    .child(h_flex().id("action-run").h_full().px(8).gap(8).items_center().rounded_l(6).text_color(lit(view, "action-run")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-run"))
+    // 24, the outline's inside: a hover card's wrapper has no height for h_full to fill.
+    .child(tip(view.hot, t, "action-run", `Run ${main.name}`, h_flex().id("action-run").h(24).px(8).gap(8).items_center().rounded_l(6).text_color(lit(view, "action-run")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-run"))
       .role("button").accessibility_label(`Run ${main.name}`).on_click(() => runAction(main))
-      .child(icon(main.icon).size(14)).child(div().max_w(140).truncate().child(main.name)))
+      .child(icon(main.icon).size(14)).child(div().max_w(140).truncate().child(main.name))))
     .child(div().w(1).h(14).flex_none().bg(t.border))
-    .child(tip(view.hot, t, "action-more", "Actions", div().id("action-more").h_full().px(5).flex().items_center().rounded_r(6).text_color(lit(view, "action-more")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-more"))
+    .child(tip(view.hot, t, "action-more", "Actions", div().id("action-more").h(24).px(5).flex().items_center().rounded_r(6).text_color(lit(view, "action-more")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-more"))
       .role("button").accessibility_label("Actions").on_click((_e, cx) => {
         view.hot = null; // The menu covers it, before the pointer can report leaving it.
         openOverlay({ mod: MOD, kind: "popup", at: underBar(view.actionPress), width: 280, height: Math.min(420, 61 + s.list.length * 32), props: { actions: "menu" } });
