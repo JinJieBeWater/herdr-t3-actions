@@ -31,7 +31,7 @@ function fire(node, event, ...args) {
 }
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
-const state = {}, calls = [], overlays = [], zoom = 1.1;
+const state = {}, calls = [], overlays = [], commands = [], jobs = [], zoom = 1.1;
 const theme = new Proxy({ foreground: "#f4f4f6", dim: "#77777f", border: "#2a2a30", hover: "#202024" }, { get: (t, k) => t[k] ?? "#a9a9b4" });
 // Text fields, in the order the editor makes them.
 const fields = [];
@@ -44,10 +44,11 @@ const env = {
   run: (name, args) => calls.push([name, plain(args)]),
   openOverlay: (spec) => overlays.push(spec), closeOverlay() {},
   focused: () => ({ tab: "b", cwd: "/repo" }), panes: () => [], spaces: () => [{ active: true, folder: "/space" }],
+  nextCommand: () => commands.length ? Promise.resolve(commands.shift()) : new Promise(() => {}),
 };
 const source = fs.readFileSync(path.join(__dirname, "main.js"), "utf8")
   .replace(/^import .*;\r?\n/gm, "").replace("export default class", "globalThis.Mod = class");
-const cx = { notify() {}, stop_propagation() {} };
+const cx = { notify() {}, stop_propagation() {}, spawn: (fn) => jobs.push(fn), focus_handle: () => ({ focus() {} }) };
 const load = (props = {}) => {
   const context = vm.createContext({ ...env, props: () => props });
   vm.runInContext(source, context, { filename: "main.js" });
@@ -65,8 +66,8 @@ assert.ok(find(bar.render(), "action-add").style.border, "outlined, as a control
 assert.equal(find(bar.render(), "action-add").style.text_color, theme.dim);
 fire(find(bar.render(), "action-add"), "on_hover", true, cx);
 assert.equal(find(bar.render(), "action-add").style.text_color, theme.foreground, "its icon brightens with its text");
-fire(find(bar.render(), "action-add"), "on_click");
-assert.deepEqual(plain(overlays.at(-1)), { mod: "herdr-actions", kind: "dialog", width: 440, height: 404, props: { actions: "edit", id: null } });
+fire(find(bar.render(), "action-add"), "on_click", {}, cx);
+assert.deepEqual(plain(overlays.at(-1)), { mod: "herdr-actions", kind: "dialog", width: 440, height: 410, props: { actions: "edit", id: null } });
 
 // Some: "▶ Dev | ▾" in one outline, a rule between.
 state["t3-actions"] = { list: [{ id: "a", name: "Dev", command: "bun dev" }, { id: "b", name: "Test", command: "bun test", place: "right", cwd: "~/x" }] };
@@ -77,10 +78,10 @@ assert.deepEqual(strings(find(control, "action-run")), ["Dev"]);
 fire(find(control, "action-run"), "on_click");
 assert.deepEqual(calls.at(-1), ["terminal.open", { argv: ["sh", "-c", "bun dev"], name: "Dev", place: "tab", folder: "/repo" }]);
 // The menu hangs from the bar under the press; with none (assistive tech), at the pointer.
-fire(find(bar.render(), "action-more"), "on_click");
+fire(find(bar.render(), "action-more"), "on_click", {}, cx);
 assert.equal(overlays.at(-1).at, undefined);
 fire(find(bar.render(), "action-more"), "on_mouse_down:left", { position: { x: 1000, y: 20 } }, cx);
-fire(find(bar.render(), "action-more"), "on_click");
+fire(find(bar.render(), "action-more"), "on_click", {}, cx);
 assert.deepEqual(plain(overlays.at(-1).at), { x: 992, y: 40 * zoom });
 assert.equal(overlays.at(-1).mod, "herdr-actions");
 
@@ -117,4 +118,40 @@ fire(find(load().render(), "actions-fit"), "on_size_change", { width: 220 });
 assert.equal(calls.length, 1);
 assert.ok([bar.render(), find(bar.render(), "actions"), find(bar.render(), "action-run")].every(n => !n.style.bg), "no fill at rest: the bar's own background shows");
 
-console.log("ok: Add action and ▶ | ▾ outlined, run, menu under the press, editor saves, the block sized to fit");
+(async () => {
+  // What opens over its button drops its hover: the pointer can't report leaving.
+  state["t3-actions"] = { list: [{ id: "a1", name: "Dev", command: "x" }, { id: "a2", name: "Test", command: "y" }] };
+  const view = load();
+  fire(find(view.render(), "action-more"), "on_hover", true, cx);
+  fire(find(view.render(), "action-more"), "on_click", {}, cx);
+  assert.equal(view.hot, null, "the menu's button doesn't stay lit");
+
+  // The menu goes by arrows and Enter.
+  const selected = (n) => find(n.render(), "action-a1").style.bg === theme.selected;
+  const menu = load({ actions: "menu" }), key = (k) => fire(find(menu.render(), "actions-menu"), "on_key_down", { key: k }, cx);
+  assert.ok(selected(menu), "it opens on the first row");
+  key("up");
+  assert.equal(find(menu.render(), "action-new").style.bg, theme.selected, "up wraps to the last row");
+  overlays.length = 0;
+  key("enter");
+  assert.equal(overlays.pop().props.actions, "edit");
+
+  // Delete asks; only the dialog's answer, split as the app splits it, deletes. Only the bar's copy hears it.
+  jobs.length = 0;
+  load();
+  const heard = jobs.length;
+  const edit = load({ actions: "edit", id: "a1" });
+  assert.equal(jobs.length, heard, "an overlay's copy doesn't listen");
+  fire(find(edit.render(), "action-delete"), "on_click", {}, cx);
+  const { mod, props } = overlays.pop();
+  assert.deepEqual([mod, props.title], ["confirm", "Delete Dev?"]);
+  assert.equal(state["t3-actions"].list.length, 2, "the click only asks");
+  const dot = props.command.name.indexOf(".");
+  assert.equal(props.command.name.slice(0, dot), "herdr-actions");
+  commands.push(props.command.name.slice(dot + 1));
+  jobs[0]();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(plain(state["t3-actions"].list.map((a) => a.id)), ["a2"]);
+
+  console.log("ok: Add action and ▶ | ▾ outlined, run, menu under the press and by keys, editor saves, Delete asks, the block sized to fit");
+})().catch((e) => { console.error(e); process.exit(1); });
