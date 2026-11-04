@@ -10,7 +10,7 @@ function element(kind = "div", source) {
     if (key in target) return target[key];
     return (...args) => {
       if (key === "when") { if (args[0]) args[1](proxy); }
-      else if (key === "child") node.items.push(args[0]);
+      else if (key === "child" || key === "trigger") node.items.push(args[0]);
       else if (key === "children") node.items.push(...args[0]);
       else if (key === "on_mouse_down") node.handlers[`${key}:${args[0]}`] = args[1];
       else if (key.startsWith("on_")) node.handlers[key] = args[0];
@@ -37,7 +37,7 @@ const theme = new Proxy({ foreground: "#f4f4f6", dim: "#77777f", border: "#2a2a3
 const fields = [];
 const env = {
   View: class {}, div: () => element(), h_flex: () => element("h"), v_flex: () => element("v"),
-  svg: (source) => element("svg", source), Input: { new: () => element("input") },
+  svg: (source) => element("svg", source), Input: { new: () => element("input") }, HoverCard: { new: () => element("hovercard") },
   InputState: { new: ({ value }) => { const f = { text: value, on() {}, value: () => f.text, focus() {} }; fields.push(f); return f; } },
   theme: () => theme, settings: () => ({ zoom }), home: () => "/home/me",
   shared: (key) => state[key], setShared: (key, value) => { state[key] = value; },
@@ -73,7 +73,7 @@ assert.deepEqual(plain(overlays.at(-1)), { mod: "herdr-actions", kind: "dialog",
 state["t3-actions"] = { list: [{ id: "a", name: "Dev", command: "bun dev" }, { id: "b", name: "Test", command: "bun test", place: "right", cwd: "~/x" }] };
 const control = find(bar.render(), "actions");
 assert.ok(control.style.border);
-assert.deepEqual(control.items.map(n => typeof n.key === "string" ? n.key : n.kind), ["action-run", "div", "action-more"]);
+assert.deepEqual(control.items.map(n => typeof n.key === "string" ? n.key : n.kind), ["action-run", "div", "hovercard"]);
 assert.deepEqual(strings(find(control, "action-run")), ["Dev"]);
 fire(find(control, "action-run"), "on_click");
 assert.deepEqual(calls.at(-1), ["terminal.open", { argv: ["sh", "-c", "bun dev"], name: "Dev", place: "tab", folder: "/repo" }]);
@@ -125,6 +125,10 @@ assert.ok([bar.render(), find(bar.render(), "actions"), find(bar.render(), "acti
   fire(find(view.render(), "action-more"), "on_hover", true, cx);
   fire(find(view.render(), "action-more"), "on_click", {}, cx);
   assert.equal(view.hot, null, "the menu's button doesn't stay lit");
+  fire(find(view.render(), "action-more"), "on_hover", true, cx);
+  const walk = (n) => !n || typeof n !== "object" ? [] : [n, ...n.items.flatMap(walk)];
+  const card = walk(view.render()).find((n) => n.kind === "hovercard").style.content;
+  assert.deepEqual(strings(card), ["Actions"], "its label, as T3's, while lit");
 
   // The menu goes by arrows and Enter.
   const selected = (n) => find(n.render(), "action-a1").style.bg === theme.selected;

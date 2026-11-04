@@ -1,7 +1,7 @@
 // Actions, as T3 Code's run button: commands you start with one click, kept in shared state.
 // In a bar it draws "▶ Dev | ▾", sized to fit its block; the menu and the editor are this mod opened as overlays.
 import { View, div, svg } from "gpui-kit";
-import { h_flex, v_flex, InputState, Input } from "gpui-base";
+import { h_flex, v_flex, InputState, Input, HoverCard } from "gpui-base";
 import { theme, run, openOverlay, closeOverlay, props, shared, setShared, home, focused, panes, spaces, settings, nextCommand } from "herdr";
 
 const MOD = "herdr-actions";
@@ -18,6 +18,11 @@ const glow = (view, id) => (on, cx) => {
   cx.notify();
 };
 const lit = (view, id, color = theme().dim) => (view.hot === id ? theme().foreground : color);
+
+// A hover label as T3 Code's tooltip: `.tooltip()` takes only a string, in the shell's own style. Only while lit: a dialog
+// opened from the button hides the pointer's leaving, and the card would stay up over it.
+const tip = (hot, t, id, label, trigger) => HoverCard.new(`tip-${id}`).anchor("top_center").open_delay(300).close_delay(0).trigger(trigger)
+  .content(hot !== id ? div() : div().mt(4).px(8).py(4).rounded(6).border(1).border_color(t.border).bg(t.chrome).shadow_md().text_size(12).text_color(t.foreground).child(label));
 
 // { list: [{ id, name, command, icon, place, cwd }], last: id }
 const state = () => shared(KEY) ?? { list: [] };
@@ -57,14 +62,14 @@ function control(view, t, stop) {
       .role("button").accessibility_label(`Run ${main.name}`).on_click(() => runAction(main))
       .child(icon(main.icon).size(14)).child(div().max_w(140).truncate().child(main.name)))
     .child(div().w(1).h(14).flex_none().bg(t.border))
-    .child(div().id("action-more").h_full().px(5).flex().items_center().rounded_r(6).text_color(lit(view, "action-more")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-more"))
-      .role("button").accessibility_label("Actions").tooltip("Actions").on_click((_e, cx) => {
+    .child(tip(view.hot, t, "action-more", "Actions", div().id("action-more").h_full().px(5).flex().items_center().rounded_r(6).text_color(lit(view, "action-more")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-more"))
+      .role("button").accessibility_label("Actions").on_click((_e, cx) => {
         view.hot = null; // The menu covers it, before the pointer can report leaving it.
         openOverlay({ mod: MOD, kind: "popup", at: underBar(view.actionPress), width: 280, height: Math.min(420, 61 + s.list.length * 32), props: { actions: "menu" } });
         cx.notify();
       })
       .on_mouse_down("left", (e, cx) => { view.actionPress = e.position; stop(e, cx); })
-      .child(svg("mods/workspace-chrome/chevron-down.svg").size(14)));
+      .child(svg("mods/workspace-chrome/chevron-down.svg").size(14))));
 }
 
 // The menu takes the keyboard, as the shipped menu does.
@@ -95,10 +100,10 @@ function menu(view) {
     })
     .child(v_flex().id("actions-list").flex_1().min_h(0).overflow_y_scroll().children(list.map((a, at) =>
       row(`action-${a.id}`, at, icon(a.icon).size(14).text_color(t.muted), a.name)
-        .child(div().id(`edit-${a.id}`).size(20).flex_none().flex().items_center().justify_center().rounded(4).text_color(lit(view, `edit-${a.id}`))
-          .hover(s => s.bg(t.raised)).on_hover(glow(view, `edit-${a.id}`)).role("button").accessibility_label(`Edit ${a.name}`).tooltip(`Edit ${a.name}`)
+        .child(tip(view.hot, t, `edit-${a.id}`, `Edit ${a.name}`, div().id(`edit-${a.id}`).size(20).flex_none().flex().items_center().justify_center().rounded(4).text_color(lit(view, `edit-${a.id}`))
+          .hover(s => s.bg(t.raised)).on_hover(glow(view, `edit-${a.id}`)).role("button").accessibility_label(`Edit ${a.name}`)
           .on_click((_e, cx) => { cx.stop_propagation(); done(); editor(a.id); })
-          .child(svg("mods/workspace-chrome/settings.svg").size(14))))))
+          .child(svg("mods/workspace-chrome/settings.svg").size(14)))))))
     .child(div().h(1).mx(6).my(4).flex_none().bg(t.border))
     .child(row("action-new", list.length, svg("mods/workspace-chrome/plus.svg").size(14).text_color(t.muted), "Add action"));
 }
