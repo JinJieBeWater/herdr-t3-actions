@@ -14,13 +14,13 @@ T3 Code's run button for Herdr App's top bar: `▶ <name> | ▾` runs the action
 
 - As T3 Code's project actions but global: the primary action is the one run last, else the first. `▶` runs it; a menu row runs that action and makes it primary; the gear opens the editor.
 - Running is `terminal.open { argv: ["sh", "-c", command], name, place, folder? }`: a new tab or a split right/down every time, named after the action; the shell stays when the command ends. With no folder it starts in the focused terminal's folder; with a mod pane focused, a terminal's in the same tab, else the space's; `~` is expanded.
-- Actions live in `shared("t3-actions")` = `{ list: [{ id, name, command, icon, place, cwd? }], last }`, which Herdr keeps across restarts.
+- Actions live in `shared("t3-actions.actions")` = `{ list: [{ id, name, command, icon, place, cwd? }], last }`, which Herdr keeps across restarts.
 
 ## Built from
 
 - `mods/t3-actions/main.js`: one mod, three roles by `props().actions`: none (the control), `"menu"`, `"edit"`; the control opens the other two with `openOverlay({ mod: "t3-actions", … })`.
 - It sizes its own block: `on_size_change` on a `flex_none` wrapper (the control and its 8px) reports its full width even when the block is narrower; divided by `settings().zoom` (it reports zoomed pixels), it goes to `run("layout.resize", { id: props().block, px })`, only when it changed. Herdr keeps that size with the layout's clicks.
-- With `shared("bar.compact")` true (Herdr T3's bar sets it under 1024px; unset elsewhere), the control drops its text: `▶`, or `▶ | ▾`. Hover labels and accessibility labels keep the names.
+- With `shared("t3-tabs.compact")` true (Herdr T3's bar sets it under 1024px; unset elsewhere), the control drops its text: `▶`, or `▶ | ▾`. Hover labels and accessibility labels keep the names.
 - Icons: `mods/t3-actions/icons/action-*.svg` (lucide), Herdr's `mods/workspace-chrome/chevron-down.svg`, `settings.svg`, `plus.svg`.
 
 ## Watch out
