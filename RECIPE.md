@@ -7,7 +7,7 @@ T3 Code's run button for Herdr App's top bar: `▶ <name> | ▾` runs the action
 ## What you see
 
 - **Control** (`t3-actions` in a top-bar block, 24px tall, centered in the bar's height): one 1px `border` outline, radius 6, 12px `dim` text. With actions: the primary action's 14px icon and its name (140px max, truncated), 8px each side, then a 1×14px `border` rule, then a `chevron-down` (14px, 5px each side). With none: a 14px play icon and `Add action`, 8px each side. No fill at rest; a part hovered fills `hover` to the outline, its icon and text `foreground`, and has a hover label, as Herdr T3's. 8px after it, before what follows in the bar.
-- **Menu** (this mod with props `{ "actions": "menu" }`, a 280px popup hanging from the bar under the click, at y 40): one 32px row per action (icon, name, a gear on the right), a divider, then `+ Add action`. Nothing is lit until a key or the pointer gets there, so Enter right after opening runs nothing; ↑/↓ move the highlight, Enter runs the row lit, and the pointer leaving a row clears its light.
+- **Menu** (this mod with props `{ "actions": "menu" }`, a 220px popup, as wide as Herdr T3's other menus, hanging 4 under the control, right edges together, as T3's (`align="end"`)): one 28px row per action (icon, name, a gear on the right), a divider, then `+ Add action`. Nothing is lit until a key or the pointer gets there, so Enter right after opening runs nothing; ↑/↓ move the highlight, Enter runs the row lit, and the pointer leaving a row clears its light.
 - **Editor** (props `{ "actions": "edit", "id" }`, a 440×410 dialog): Name, Command and Folder (optional) inputs; Icon (play, test, lint, configure, build, debug: lucide's play, flask-conical, list-checks, wrench, hammer, bug, as T3 Code) and Run in (Tab, Right, Down) choices; Delete (when editing; asks through this mod's own confirm dialog, `actions: "confirm"`, whose `Delete` button answers with `t3-actions.delete-action:<id>`), Cancel, Save (needs a name and a command; Enter in an input saves).
 
 ## How it behaves
@@ -26,7 +26,7 @@ T3 Code's run button for Herdr App's top bar: `▶ <name> | ▾` runs the action
 ## Watch out
 
 - A hover style's color reaches text but never an svg: the control brightens its icon by state (`on_hover`), not by `.hover()`.
-- The menu's popup is placed under the press (`e.position`, window coordinates) at y `40 × zoom`, the bar's height; with no press (assistive tech), at the pointer.
+- The menu's popup is placed from the press's `e.bounds` (▾'s, window coordinates): right edge on the outline's, 1 past ▾, top 4 under the outline; with no press (assistive tech), at the pointer.
 - `layout.resize` doesn't reach a block in a floating window's layout. The block's row needs `"resizable": false`: rows default to resizable, and a drag would fight the block sizing itself.
 - Commands run through `sh -c`: your shell's aliases and functions aren't there, and plain Windows has no `sh`.
 
