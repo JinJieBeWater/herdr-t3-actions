@@ -6,7 +6,7 @@ A [Herdr App](https://herdr.dev) mod with [T3 Code](https://github.com/pingdotgg
 
 ![Actions](preview.png)
 
-It is the Actions control of the [Herdr T3 layout](https://github.com/JinJieBeWater/herdr-t3), on its own.
+It is also the Actions control inside [Herdr T3](https://github.com/JinJieBeWater/herdr-t3)'s Details popup. The layout uses a square-menu entry and three rows for computer/directory, Open in Finder or an installed editor, and Actions. Source space/tab/terminal/cwd is captured before popup focus; changing that source closes it. The standalone bar below keeps its existing run/menu appearance.
 
 ## Install
 
@@ -25,7 +25,7 @@ Herdr doesn't update mods from others, and adding this again would install a ren
 
 ## What it runs
 
-Only the commands you save, each through `sh -c` in a new terminal (`terminal.open`): your shell's aliases and functions aren't there (write `zsh -ic '…'` in the command for them), and plain Windows has no `sh`. No network, no files outside its folder.
+Saved commands run through `sh -c` in a new terminal (`terminal.open`): aliases/functions need an explicit shell such as `zsh -ic`, and plain Windows needs `sh`. In Herdr T3, Details additionally reads macOS ComputerName, probes installed editors through `open -Ra`, and opens the captured directory through Finder or `open -a`; remote directories are not sent to local apps. No network is used.
 
 ## Develop
 

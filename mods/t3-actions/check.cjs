@@ -37,7 +37,7 @@ const theme = new Proxy({ foreground: "#f4f4f6", dim: "#77777f", border: "#2a2a3
 const fields = [];
 const env = {
   View: class {}, div: () => element(), h_flex: () => element("h"), v_flex: () => element("v"),
-  svg: (source) => element("svg", source), Input: { new: () => element("input") }, Popup: { new: (id, trigger) => element("popup").id(id).child(trigger) },
+  svg: (source) => element("svg", source), image: source => element("image", source), Input: { new: () => element("input") }, Popup: { new: (id, trigger) => element("popup").id(id).child(trigger) },
   InputState: { new: ({ value }) => { const f = { text: value, on() {}, value: () => f.text, focus() {} }; fields.push(f); return f; } },
   theme: () => theme, settings: () => ({ zoom }), home: () => "/home/me", keys: () => [], window: () => ({ platform: "macos" }),
   shared: (key) => state[key], setShared: (key, value) => { state[key] = value; },
@@ -46,7 +46,7 @@ const env = {
   focused: () => ({ tab: "b", cwd: "/repo" }), panes: () => [], spaces: () => [{ active: true, folder: "/space" }],
   nextCommand: () => commands.length ? Promise.resolve(commands.shift()) : new Promise(() => {}),
 };
-const source = ["button.js", "store.js", "tip.js", "focus.js", "list.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n")
+const source = ["button.js", "store.js", "tip.js", "focus.js", "list.js", "terminal-context.js", "workspace-details.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n")
   .replace(/^import .*;\r?\n/gm, "").replace("export default class", "globalThis.Mod = class").replace(/^export /gm, "");
 const cx = { notify() {}, stop_propagation() {}, spawn: (fn) => jobs.push(fn), focus_handle: () => ({ focus() {} }), timer: { every: () => ({ cancel() {} }), after: (_ms, f) => (f(cx), { cancel() {} }) } };
 const load = (props = {}) => {
@@ -54,6 +54,7 @@ const load = (props = {}) => {
   vm.runInContext(source, context, { filename: "main.js" });
   const mod = new context.Mod();
   mod.init?.(props, cx);
+  mod.testScope = context;
   return mod;
 };
 
@@ -262,5 +263,44 @@ delete state["t3-tabs.compact"];
   assert.equal(find(menu.render(), "action-new").style.bg, theme.selected, "typing finds Add action");
   assert.equal(find(menu.render(), "action-new").style.tab_index, undefined, "rows go by the arrows");
 }
-console.log("ok: Add action and ▶ | ▾ outlined, run, menu under the press and by keys, editor saves, Delete asks, the block sized to fit");
+{
+  const source = { space: "s", tab: "b", terminal: "t9", folder: "/captured", machine: "remote-computer-name-that-is-deliberately-long" };
+  env.panes = () => [{ terminal: "t9", tab: "b", cwd: "/captured" }];
+  env.spaces = () => [{ id: "s", active: true, tabs: [{ id: "b", active: true }] }];
+  const entry = load({ details: true });
+  fire(find(entry.render(), "details-toggle"), "on_mouse_down:left", { bounds: { x: 1000, y: 6, width: 28 * zoom, height: 28 * zoom } }, cx);
+  fire(find(entry.render(), "details-toggle"), "on_click", {}, cx);
+  assert.equal(overlays.at(-1).props.actions, "details", "the real entry button click handler opens Details");
+  assert.equal(overlays.at(-1).height, 420, "the host allows the measured popup content to grow");
+  state["t3-actions.actions"] = { list: [] };
+  const details = load({ actions: "details", source, overlay: "details" });
+  const root = details.render();
+  assert.equal(find(root, "workspace-details").style.rounded, 16);
+  assert.ok(find(root, "workspace-details").style.h >= 50, "an open Details scroll viewport has room for a control, never zero height");
+  fire(find(root, "details-content"), "on_size_change", { width: 280 * zoom, height: 240 * zoom }, cx);
+  assert.equal(find(details.render(), "workspace-details").style.h, 242, "Details sizes its viewport from laid-out content plus the border");
+  fire(find(root, "details-content"), "on_size_change", { width: 280 * zoom, height: 2000 * zoom }, cx);
+  assert.equal(find(details.render(), "workspace-details").style.h, 420, "long content is scrollable within the popup's height limit");
+  fire(find(root, "details-content"), "on_size_change", { width: 280 * zoom, height: 112 * zoom }, cx);
+  assert.equal(find(root, "details-machine-name").style.truncate.length, 0);
+  assert.ok(find(root, "details-machine-name").style.whitespace_nowrap !== undefined);
+  assert.equal(find(root, "details-space-menu").style.h, 32);
+  assert.ok(find(root, "action-add"));
+  assert.equal(find(root, "details-finder").style.opacity, 0.64, "remote open uses the existing disabled token");
+  assert.equal(find(root, "details-finder").handlers.on_click, undefined);
+  state["t3-actions.actions"] = { list: [{ id: "a", name: "Run captured", command: "pwd", place: "down" }] };
+  calls.length = 0;
+  fire(find(details.render(), "action-run"), "on_click");
+  assert.equal(calls.at(-1)[1].folder, "/captured", "popup focus cannot replace the source cwd");
+  assert.equal(calls.at(-1)[1].place, "down");
+  details.testScope.spaces = () => [{ id: "other", active: true, tabs: [] }]; calls.length = 0;
+  fire(find(details.render(), "action-run"), "on_click"); assert.equal(calls.length, 0, "stale source cannot execute");
+  details.testScope.spaces = () => [{ id: "s", active: true, tabs: [{ id: "b", active: true }] }];
+  const opened = [];
+  details.testScope.exec = async (_cmd, args) => { opened.push([...args]); return { code: args.includes("-Ra") ? 1 : 0 }; };
+  await details.testScope.openTarget("Zed", { ...source, machine: null });
+  assert.deepEqual(opened, [["-Ra", "Zed"], ["/captured"]]);
+  assert.equal(state["t3-actions.openTarget"], "Finder", "uninstalled target falls back globally");
+}
+console.log("ok: Actions controls/editor; T3 three-row details, single-line name, source cwd, invalidation and editor fallback");
 })().catch((e) => { console.error(e); process.exit(1); });

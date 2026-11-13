@@ -8,6 +8,7 @@ import { stopsInit, stopsEnd, stop, focusRoot, onStop, pressed, justClosed } fro
 import { menuJump, scrollList } from "./list.js";
 import { KEY, migrate } from "./store.js";
 import { button, radiusOf } from "./button.js";
+import { toggleDetails, dismissDetails, detailsClosed, initDetails, detailsView, sourceOkay, closeForAction, openedDetails, openInMenu, directoryMenu, detailsRow } from "./workspace-details.js";
 
 const MOD = "t3-actions";
 // Where everyone's saved actions live: another key would lose them, whatever the mod is called.
@@ -24,7 +25,7 @@ const primary = ({ list, last }) => list.find(a => a.id === last) ?? list[0];
 // The menu: a popup's height is only a maximum, so its list sets its own. REST: its padding, rule and Add action.
 // The menu as wide as the layout's other menus (t3-menu's, T3's); a longer name is cut short.
 const MENU_MAX = 420, MENU_REST = 45, MENU_W = 220;
-const editor = (id) => openOverlay({ mod: MOD, kind: "dialog", frame: "none", width: 512, props: { actions: "edit", id } });
+const editor = (id) => { const source = props()?.source; closeForAction(); return openOverlay({ mod: MOD, kind: "dialog", frame: "none", width: 512, props: { actions: "edit", id, source } }); };
 
 // A menu hangs 4px under the bar's 24px control, centered in its 40 (T3's MenuPopup sideOffset), under the click, not on the pointer; the app keeps it in the window.
 // With no press to read (assistive tech clicks without one), the app's default: the pointer.
@@ -33,11 +34,16 @@ const editor = (id) => openOverlay({ mod: MOD, kind: "dialog", frame: "none", wi
 const underBar = (b) => { const z = Number(settings()?.zoom) || 1; return b && { x: b.x + b.width + z - MENU_W * z, y: b.y + b.height + 5 * z }; };
 
 function runAction(a) {
+  const source = props()?.source;
+  if (!sourceOkay(source)) { closeForAction(); return; }
+  closeForAction();
+  if (source?.terminal) run("pane.focus", { terminal: source.terminal });
+  else if (source?.pane) run("pane.focus", { pane: source.pane });
   setShared(KEY.actions, { ...state(), last: a.id });
   // A mod pane (a review beside its agent) has no folder: use a terminal's in the same tab, else the space's.
   const f = focused();
   const folder = a.cwd?.startsWith("~") ? home() + a.cwd.slice(1)
-    : a.cwd || f?.cwd || panes().find(p => p.tab === f?.tab && p.cwd)?.cwd || spaces().find(s => s.active)?.folder;
+    : a.cwd || source?.folder || f?.cwd || panes().find(p => p.tab === f?.tab && p.cwd)?.cwd || spaces().find(s => s.active)?.folder;
   // shortcut: sh -c skips your shell's aliases and functions and needs sh (not on plain Windows); run them through `zsh -ic` in the command if needed.
   run("terminal.open", { argv: ["sh", "-c", a.command], name: a.name, place: a.place ?? "tab", ...(folder ? { folder } : {}) });
 }
@@ -51,8 +57,9 @@ function deleteAction(id) {
 // Not shared/button.js: one outline round two halves is T3's ButtonGroup (docs/internals/t3-tokens.md).
 // The bar's control: "▶ Dev | ▾", or "Add action" before there is one. Outlined, not filled: a fill would read as an active tab.
 function control(view, t, stopPress) {
+  if (props()?.actions === "details") return panelControl(view, t);
   // A narrow bar's layout sets it (Herdr T3's bar-measure): the icon alone, the name left to the hover label. Unset, the full control.
-  const s = state(), main = primary(s), compact = shared(KEY.compact);
+  const s = state(), main = primary(s), compact = props()?.actions === "details" ? false : shared(KEY.compact);
   // T3's xs outline button: its svg hangs 2px into each side, its label sits 4 on, and with the icon alone it's 24 square.
   const ends = (el, wide) => wide ? el.pl(5).pr(7).gap(4) : el.justify_center();
   const box = (id) => h_flex().id(id).h(24).flex_none().items_center().rounded(8).border(1).border_color(t.border).text_size(12).on_mouse_down("left", stopPress);
@@ -69,11 +76,25 @@ function control(view, t, stopPress) {
     .child(tip(view, t, "action-more", "Actions", stop(view, t, "action-more", div().id("action-more").h(22).w(23).flex().items_center().justify_center().rounded_r(8).text_color(lit(view, "action-more")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-more"))
       .role("button").accessibility_label("Actions").on_click((_e, cx) => {
         view.hot = null; // The menu covers it, before the pointer can report leaving it.
-        if (!justClosed(view, MENU_CLOSED)) openOverlay({ mod: MOD, kind: "popup", at: underBar(view.actionPress), width: MENU_W, height: Math.min(MENU_MAX, MENU_REST + s.list.length * 28), props: { actions: "menu" } });
+        if (!justClosed(view, MENU_CLOSED)) openOverlay({ mod: MOD, kind: "popup", at: underBar(view.actionPress), width: MENU_W, height: Math.min(MENU_MAX, MENU_REST + s.list.length * 28), props: { actions: "menu", source: props()?.source, details: props()?.actions === "details" ? props().overlay : null } });
         cx.notify();
       })
       .on_mouse_down("left", (e, cx) => { view.actionPress = e.bounds; pressed(view); stopPress(e, cx); })
       .child(svg("mods/t3-actions/icons/chevron-down.svg").size(16)), 8), { below: true }));
+}
+
+function panelControl(view, t) {
+  const s = state(), main = primary(s);
+  if (!main) return stop(view, t, "action-add", detailsRow(t, "action-add").w_full().role("button").accessibility_label("Add action")
+    .on_click(() => editor(null)).child(svg("mods/t3-actions/icons/plus.svg").size(16).flex_none().text_color(t.dim)).child("Add action"), 8);
+  return h_flex().id("details-actions-row").h(32).min_w(0).rounded(8).items_center().on_hover((on, cx) => { view.actionsHot = on; cx.notify(); })
+    .child(stop(view, t, "action-run", detailsRow(t, "action-run").flex_1().rounded_r(0).role("button").accessibility_label(`Run ${main.name}`).tooltip(main.name)
+      .on_click(() => runAction(main)).child(icon(main.icon).size(16).flex_none().text_color(t.dim)).child(div().flex_1().min_w(0).truncate().child(main.name)), 8))
+    .child(div().w(1).h(16).bg(view.actionsHot ? t.border : t.popover))
+    .child(stop(view, t, "action-more", detailsRow(t, "action-more").w(32).px(0).justify_center().rounded_l(0).role("button").accessibility_label("Actions")
+      .on_mouse_down("left", (e, cx) => { view.actionPress = e.bounds; cx.stop_propagation(); })
+      .on_click(() => openOverlay({ mod: MOD, kind: "popup", at: underBar(view.actionPress), width: MENU_W, height: Math.min(MENU_MAX, MENU_REST + s.list.length * 28), props: { actions: "menu", source: props().source, details: props().overlay } }))
+      .child(svg("mods/t3-actions/icons/chevron-down.svg").size(16).text_color(t.dim)), 8));
 }
 
 // The menu takes the keyboard, as the shipped menu does. As T3's, nothing is lit until a key or the pointer gets there.
@@ -218,18 +239,27 @@ function confirmView(view) {
 export default class Actions extends View {
 
   init(_props, cx) {
+    this.hot = null;
     // Installed alone, this may be the only mod of the layout's here: keys under old names move first (docs/internals/storage.md).
     migrate();
     const overlay = props()?.actions;
     if (overlay === "edit") initEditor(this, cx);
     if (overlay === "menu") initMenu(this, cx);
+    if (overlay === "open-in") initMenu(this, cx);
+    if (overlay === "directory-menu") initMenu(this, cx);
     if (overlay === "confirm") initConfirm(this, cx);
+    if (overlay === "details") { stopsInit(this, cx, "modal"); initDetails(this, cx); }
+    if (["menu", "open-in", "directory-menu"].includes(overlay) && props()?.source) cx.timer.every(100, () => {
+      if (!sourceOkay(props().source)) closeOverlay(props().overlay);
+    });
     if (!overlay) stopsInit(this, cx);
     // The bar's copy answers Delete's dialog: `t3-actions.delete-action:<id>`.
-    if (!overlay) cx.spawn(async () => {
+    if (!overlay) cx.spawn(async (cx) => {
       for (;;) {
         const command = await nextCommand();
         if (command.startsWith("delete-action:")) deleteAction(command.slice("delete-action:".length));
+        else if (command === "details") { toggleDetails(); cx.notify(); }
+        else if (command === "dismiss-details") { dismissDetails(); cx.notify(); }
       }
     });
   }
@@ -237,17 +267,25 @@ export default class Actions extends View {
   close() {
     stopsEnd(this);
     if (/** @type {any} */ (this).keys) setShared(MENU_CLOSED, Date.now());
+    if (props()?.actions === "details") detailsClosed(props().overlay);
   }
 
   render() {
     const overlay = props()?.actions;
     if (overlay === "menu") return menu(this);
+    if (overlay === "open-in") return openInMenu(this);
+    if (overlay === "directory-menu") return directoryMenu(this);
     if (overlay === "edit") return editorView(this);
     if (overlay === "confirm") return confirmView(this);
+    if (overlay === "details") return detailsView(this, control);
     const stopPress = (_e, cx) => cx.stop_propagation(), home = shared(KEY.home);
     return focusRoot(this, h_flex().size_full().items_center().justify_end()
       // Home has no project to run them in.
-      .when(!home || !spaces().some(s => s.active && s.id === home), el => el.child(h_flex().id("actions-fit").flex_none().pr(8).items_center().on_size_change((size) => this.fit(size)).child(control(this, theme(), stopPress)))));
+      .when(!home || !spaces().some(s => s.active && s.id === home), el => el.child(h_flex().id("actions-fit").flex_none().pr(props()?.details ? 4 : 8).items_center().on_size_change((size) => this.fit(size))
+        .when(!props()?.details, el => el.child(control(this, theme(), stopPress)))
+        .when(Boolean(props()?.details), el => el.child(tip(this, theme(), "details-toggle", "Details", stop(this, theme(), "details-toggle", button(theme(), "details-toggle", { size: "sm", surface: "card", on: Boolean(openedDetails()), icon: "mods/t3-actions/icons/square-menu.svg", label: "Details", hot: this.hot === "details-toggle" })
+          .on_hover(glow(this, "details-toggle")).on_mouse_down("left", (e, cx) => { this.detailsPress = e.bounds; stopPress(e, cx); })
+          .on_click((_e, cx) => { if (!justClosed(this, "t3-actions.detailsClosed")) toggleDetails(this.detailsPress); cx.notify(); }), 8), { action: "t3-tabs.details", below: true }))))));
   }
 
   // With the block's id in props.block, it sizes that block to the control: layout.resize, which Herdr keeps with the

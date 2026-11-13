@@ -6,7 +6,7 @@
 
 ![Actions](preview.png)
 
-它就是 [Herdr T3 布局](https://github.com/JinJieBeWater/herdr-t3)里的动作控件，单独拿出来。
+它也是 [Herdr T3 布局](https://github.com/JinJieBeWater/herdr-t3)详情 popup 里的 Actions 控件：布局用 square-menu 入口，三行放电脑／目录、Open in Finder 或已装编辑器、Actions。弹出前捕获来源 space／tab／终端／cwd，来源变化时收起。下面的独立安装仍保留原运行按钮／菜单外观。
 
 ## 安装
 
@@ -25,7 +25,7 @@ Herdr 不会更新别人做的 mod，再添加一次只会装出一份改了名�
 
 ## 会运行什么
 
-只运行你保存的命令，每条都通过 `sh -c` 在新终端里运行（`terminal.open`）：拿不到你 shell 的别名和函数（需要的话在命令里写 `zsh -ic '…'`），纯 Windows 也没有 `sh`。不联网，也不读写自己目录以外的文件。
+保存的命令通过 `sh -c` 在新终端里运行（`terminal.open`）；别名／函数需显式指定 `zsh -ic` 等 shell，纯 Windows 需要另装 `sh`。在 Herdr T3 里，详情还读取 macOS ComputerName，用 `open -Ra` 检测编辑器，通过 Finder 或 `open -a` 打开捕获的目录；远程目录不交本机应用。不访问网络。
 
 ## 开发
 
