@@ -4,11 +4,13 @@ import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input } from "gpui-base";
 import { theme, run, openOverlay, closeOverlay, props, shared, setShared, home, focused, panes, spaces, settings, nextCommand } from "herdr";
 import { tip, glow } from "./tip.js";
+import { nameText, measuredTooltip } from "./measured-text.js";
 import { stopsInit, stopsEnd, stop, focusRoot, onStop, pressed, justClosed } from "./focus.js";
 import { menuJump, scrollList } from "./list.js";
 import { KEY, migrate } from "./store.js";
 import { button, radiusOf } from "./button.js";
-import { toggleDetails, dismissDetails, detailsClosed, initDetails, detailsView, sourceOkay, closeForAction, openedDetails, openInMenu, directoryMenu, detailsRow } from "./workspace-details.js";
+import { toggleDetails, dismissDetails, detailsClosed, initDetails, detailsView, sourceOkay, closeForAction, openedDetails, openInMenu, directoryMenu, detailsRow, detailsLayerClosed, detailsLayerOpen, openDetailsLayer, underDetails, detailsItemsMenu } from "./workspace-details.js";
+import { reviewDetailsView, initReviewScope, reviewScopeView, closeReviewScope } from "./review-details.js";
 
 const MOD = "t3-actions";
 // Where everyone's saved actions live: another key would lose them, whatever the mod is called.
@@ -25,7 +27,7 @@ const primary = ({ list, last }) => list.find(a => a.id === last) ?? list[0];
 // The menu: a popup's height is only a maximum, so its list sets its own. REST: its padding, rule and Add action.
 // The menu as wide as the layout's other menus (t3-menu's, T3's); a longer name is cut short.
 const MENU_MAX = 420, MENU_REST = 45, MENU_W = 220;
-const editor = (id) => { const source = props()?.source; closeForAction(); return openOverlay({ mod: MOD, kind: "dialog", frame: "none", width: 512, props: { actions: "edit", id, source } }); };
+const editor = (id) => { const p = props() ?? {}; return openOverlay({ mod: MOD, kind: "dialog", frame: "none", width: 512, props: { actions: "edit", id, source: p.source, details: p.actions === "details" ? p.overlay : p.details } }); };
 
 // A menu hangs 4px under the bar's 24px control, centered in its 40 (T3's MenuPopup sideOffset), under the click, not on the pointer; the app keeps it in the window.
 // With no press to read (assistive tech clicks without one), the app's default: the pointer.
@@ -36,7 +38,6 @@ const underBar = (b) => { const z = Number(settings()?.zoom) || 1; return b && {
 function runAction(a) {
   const source = props()?.source;
   if (!sourceOkay(source)) { closeForAction(); return; }
-  closeForAction();
   if (source?.terminal) run("pane.focus", { terminal: source.terminal });
   else if (source?.pane) run("pane.focus", { pane: source.pane });
   setShared(KEY.actions, { ...state(), last: a.id });
@@ -63,37 +64,38 @@ function control(view, t, stopPress) {
   // T3's xs outline button: its svg hangs 2px into each side, its label sits 4 on, and with the icon alone it's 24 square.
   const ends = (el, wide) => wide ? el.pl(5).pr(7).gap(4) : el.justify_center();
   const box = (id) => h_flex().id(id).h(24).flex_none().items_center().rounded(8).border(1).border_color(t.border).text_size(12).on_mouse_down("left", stopPress);
-  if (!main) return tip(view, t, "action-add", "Add action", stop(view, t, "action-add", ends(box("action-add"), !compact).when(Boolean(compact), el => el.w(24)).text_color(lit(view, "action-add")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-add"))
+  if (!main) return measuredTooltip(view, t, "action-add", "Add action", stop(view, t, "action-add", ends(box("action-add"), !compact).when(Boolean(compact), el => el.w(24)).text_color(lit(view, "action-add")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-add"))
     // The dialog covers it, before the pointer can report leaving it.
     .role("button").accessibility_label("Add action").on_click((_e, cx) => { view.hot = null; editor(null); cx.notify(); })
-    .child(svg("mods/t3-actions/icons/plus.svg").size(14)).when(!compact, el => el.child("Add action")), 8), { below: true });
+    .child(svg("mods/t3-actions/icons/plus.svg").size(14)).when(!compact, el => el.child("Add action")), 8), { shown: !compact, below: true });
   return box("actions").text_color(t.dim)
     // 22, the outline's inside: a hover card's wrapper has no height for h_full to fill.
-    .child(tip(view, t, "action-run", `Run ${main.name}`, stop(view, t, "action-run", ends(h_flex().id("action-run").h(22).items_center().rounded_l(8), !compact).when(Boolean(compact), el => el.w(23)).text_color(lit(view, "action-run")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-run"))
+    .child(measuredTooltip(view, t, "action-run", `Run ${main.name}`, stop(view, t, "action-run", ends(h_flex().id("action-run").h(22).items_center().rounded_l(8), !compact).when(Boolean(compact), el => el.w(23)).text_color(lit(view, "action-run")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-run"))
       .role("button").accessibility_label(`Run ${main.name}`).on_click(() => runAction(main))
-      .child(icon(main.icon).size(14)).when(!compact, el => el.child(div().max_w(140).truncate().child(main.name))), 8), { below: true }))
+      .child(icon(main.icon).size(14)).when(!compact, el => el.child(nameText(view, "action-run", main.name).max_w(140))), 8), { shown: !compact, below: true }))
     .child(div().w(1).h(22).flex_none().bg(t.border))
-    .child(tip(view, t, "action-more", "Actions", stop(view, t, "action-more", div().id("action-more").h(22).w(23).flex().items_center().justify_center().rounded_r(8).text_color(lit(view, "action-more")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-more"))
+    .child(stop(view, t, "action-more", div().id("action-more").h(22).w(23).flex().items_center().justify_center().rounded_r(8).text_color(lit(view, "action-more")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-more"))
       .role("button").accessibility_label("Actions").on_click((_e, cx) => {
         view.hot = null; // The menu covers it, before the pointer can report leaving it.
         if (!justClosed(view, MENU_CLOSED)) openOverlay({ mod: MOD, kind: "popup", at: underBar(view.actionPress), width: MENU_W, height: Math.min(MENU_MAX, MENU_REST + s.list.length * 28), props: { actions: "menu", source: props()?.source, details: props()?.actions === "details" ? props().overlay : null } });
         cx.notify();
       })
       .on_mouse_down("left", (e, cx) => { view.actionPress = e.bounds; pressed(view); stopPress(e, cx); })
-      .child(svg("mods/t3-actions/icons/chevron-down.svg").size(16)), 8), { below: true }));
+      .child(svg("mods/t3-actions/icons/chevron-down.svg").size(16)), 8));
 }
 
 function panelControl(view, t) {
-  const s = state(), main = primary(s);
+  const s = state(), main = primary(s), menuOn = detailsLayerOpen("menu");
   if (!main) return stop(view, t, "action-add", detailsRow(t, "action-add").w_full().role("button").accessibility_label("Add action")
     .on_click(() => editor(null)).child(svg("mods/t3-actions/icons/plus.svg").size(16).flex_none().text_color(t.dim)).child("Add action"), 8);
-  return h_flex().id("details-actions-row").h(32).min_w(0).rounded(8).items_center().on_hover((on, cx) => { view.actionsHot = on; cx.notify(); })
-    .child(stop(view, t, "action-run", detailsRow(t, "action-run").flex_1().rounded_r(0).role("button").accessibility_label(`Run ${main.name}`).tooltip(main.name)
+  return h_flex().id("details-actions-row").h(32).min_w(0).rounded(8).items_center().when(menuOn || view.actionsHot, el => el.bg(t.foreground + (menuOn ? "1f" : "12")))
+    .on_hover((on, cx) => { view.actionsHot = on; cx.notify(); })
+    .child(stop(view, t, "action-run", detailsRow(t, "action-run").flex_1().rounded_r(0).role("button").accessibility_label(`Run ${main.name}`)
       .on_click(() => runAction(main)).child(icon(main.icon).size(16).flex_none().text_color(t.dim)).child(div().flex_1().min_w(0).truncate().child(main.name)), 8))
-    .child(div().w(1).h(16).bg(view.actionsHot ? t.border : t.popover))
-    .child(stop(view, t, "action-more", detailsRow(t, "action-more").w(32).px(0).justify_center().rounded_l(0).role("button").accessibility_label("Actions")
-      .on_mouse_down("left", (e, cx) => { view.actionPress = e.bounds; cx.stop_propagation(); })
-      .on_click(() => openOverlay({ mod: MOD, kind: "popup", at: underBar(view.actionPress), width: MENU_W, height: Math.min(MENU_MAX, MENU_REST + s.list.length * 28), props: { actions: "menu", source: props().source, details: props().overlay } }))
+    .child(div().id("details-actions-rule").w(1).h(16).when(view.actionsHot || menuOn, el => el.bg(t.border)))
+    .child(stop(view, t, "action-more", detailsRow(t, "action-more", { on: menuOn }).w(32).px(0).justify_center().rounded_l(0).role("button").accessibility_label("Actions")
+      .on_mouse_down("left", (e, cx) => { view.actionPress = e.bounds; pressed(view); cx.stop_propagation(); })
+      .on_click((_e, cx) => { view.actionsHot = false; if (!justClosed(view, MENU_CLOSED)) openDetailsLayer("menu", { ...underDetails(view, view.actionPress), height: Math.min(MENU_MAX, 36 + s.list.length * 28) }); cx.notify(); })
       .child(svg("mods/t3-actions/icons/chevron-down.svg").size(16).text_color(t.dim)), 8));
 }
 
@@ -106,7 +108,7 @@ function initMenu(view, cx) {
 }
 
 function menu(view) {
-  const t = theme(), { list } = state(), done = () => closeOverlay(props().overlay);
+  const t = theme(), { list } = state(), done = () => closeOverlay(props().overlay), panel = Boolean(props().details), rest = panel ? 36 : MENU_REST;
   const picks = [...list.map(a => () => runAction(a)), () => editor(null)];
   const labels = [...list.map(a => a.name), "Add action"];
   const row = (id, at, i, label) => h_flex().id(id).h(28).px(8).gap(8).rounded(4).items_center().flex_none()
@@ -129,10 +131,10 @@ function menu(view) {
       cx.notify();
     })
     // Add action stays outside the list, always in view: with it lit, nothing here is.
-    .child(scrollList(view, "actions-list", { count: list.length, row: 28, height: Math.min(list.length * 28, MENU_MAX - MENU_REST), at: view.at < list.length ? view.at : -1, wheeled: (keep) => { if (keep >= 0) view.at = keep; }, draw: (at) => { const a = list[at]; return row(`action-${a.id}`, at, icon(a.icon).size(16).mx(-2).text_color(t.muted), a.name)
-        .child(tip(view, t, `edit-${a.id}`, `Edit ${a.name}`, stop(view, t, `edit-${a.id}`, button(t, `edit-${a.id}`, { icon: "mods/t3-actions/icons/settings.svg", label: `Edit ${a.name}`, surface: "card", hot: view.hot === `edit-${a.id}` })
-          .on_hover(glow(view, `edit-${a.id}`)).on_click((_e, cx) => { cx.stop_propagation(); done(); editor(a.id); }), radiusOf()), { below: true })); } }))
-    .child(div().h(1).mx(8).my(4).flex_none().bg(t.border))
+    .child(scrollList(view, "actions-list", { count: list.length, row: 28, height: Math.min(list.length * 28, MENU_MAX - rest), at: view.at < list.length ? view.at : -1, wheeled: (keep) => { if (keep >= 0) view.at = keep; }, draw: (at) => { const a = list[at]; return row(`action-${a.id}`, at, icon(a.icon).size(16).mx(-2).text_color(t.muted), a.name)
+        .child(div().size(24).flex_none().when(!panel || view.at === at || onStop(view) === `edit-${a.id}`, el => el.child(tip(view, t, `edit-${a.id}`, `Edit ${a.name}`, stop(view, t, `edit-${a.id}`, button(t, `edit-${a.id}`, { icon: "mods/t3-actions/icons/settings.svg", label: `Edit ${a.name}`, surface: "card", hot: view.hot === `edit-${a.id}` })
+          .on_hover(glow(view, `edit-${a.id}`)).on_click((_e, cx) => { cx.stop_propagation(); done(); editor(a.id); }), radiusOf()), { below: true })))); } }))
+    .when(!panel, el => el.child(div().id("actions-menu-divider").h(1).mx(8).my(4).flex_none().bg(t.border)))
     .child(row("action-new", list.length, svg("mods/t3-actions/icons/plus.svg").size(16).mx(-2).text_color(t.muted), "Add action")));
 }
 
@@ -247,9 +249,11 @@ export default class Actions extends View {
     if (overlay === "menu") initMenu(this, cx);
     if (overlay === "open-in") initMenu(this, cx);
     if (overlay === "directory-menu") initMenu(this, cx);
+    if (overlay === "details-items") initMenu(this, cx);
     if (overlay === "confirm") initConfirm(this, cx);
     if (overlay === "details") { stopsInit(this, cx, "modal"); initDetails(this, cx); }
-    if (["menu", "open-in", "directory-menu"].includes(overlay) && props()?.source) cx.timer.every(100, () => {
+    if (overlay === "review-scope") { stopsInit(this, cx, "modal"); initReviewScope(this, cx); }
+    if (["menu", "open-in", "directory-menu", "details-items"].includes(overlay) && props()?.source) cx.timer.every(100, () => {
       if (!sourceOkay(props().source)) closeOverlay(props().overlay);
     });
     if (!overlay) stopsInit(this, cx);
@@ -266,6 +270,8 @@ export default class Actions extends View {
 
   close() {
     stopsEnd(this);
+    detailsLayerClosed(props()?.overlay);
+    if (props()?.actions === "review-scope") closeReviewScope(this);
     if (/** @type {any} */ (this).keys) setShared(MENU_CLOSED, Date.now());
     if (props()?.actions === "details") detailsClosed(props().overlay);
   }
@@ -275,9 +281,11 @@ export default class Actions extends View {
     if (overlay === "menu") return menu(this);
     if (overlay === "open-in") return openInMenu(this);
     if (overlay === "directory-menu") return directoryMenu(this);
+    if (overlay === "details-items") return detailsItemsMenu(this);
     if (overlay === "edit") return editorView(this);
     if (overlay === "confirm") return confirmView(this);
-    if (overlay === "details") return detailsView(this, control);
+    if (overlay === "details") return detailsView(this, control, reviewDetailsView);
+    if (overlay === "review-scope") return reviewScopeView(this);
     const stopPress = (_e, cx) => cx.stop_propagation(), home = shared(KEY.home);
     return focusRoot(this, h_flex().size_full().items_center().justify_end()
       // Home has no project to run them in.
