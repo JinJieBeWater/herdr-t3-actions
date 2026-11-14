@@ -76,6 +76,7 @@ delete state["t3-tabs.home"];
 // None yet: "Add action", outlined, brightening with its icon on hover; it opens the editor.
 const bar = load({ block: "actions" });
 assert.ok(find(bar.render(), "action-add").style.border, "outlined, as a control on its own in any bar");
+assert.equal(find(bar.render(), "action-add").hoverStyle.bg, theme.foreground + "0a", "hovered, the bar's 4%, as the split's halves");
 assert.equal(find(bar.render(), "tip-action-add"), null, "visible Add action text needs no repeated tooltip");
 assert.equal(find(bar.render(), "action-add").style.text_color, theme.dim);
 fire(find(bar.render(), "action-add"), "on_hover", true, cx);
@@ -126,11 +127,13 @@ assert.equal(overlays.at(-1).width, 220, "as wide as the layout's other menus (t
   assert.equal(state["t3-actions.menuClosed"], undefined, "the editor isn't the menu");
 }
 
-// The menu: a row runs its action and makes it the one ▶ runs; a gear edits it.
+// The menu: a row runs its action and makes it the one ▶ runs; a gear edits it, shown only on the row lit, as T3's; no rule.
 const menu = load({ actions: "menu" });
+assert.ok(!find(menu.render(), "edit-a") && !find(menu.render(), "actions-menu").items.some(n => n?.style?.h === 1), "at rest no Edit, no rule over Add action");
 fire(find(menu.render(), "action-b"), "on_click");
 assert.deepEqual(calls.at(-1), ["terminal.open", { argv: ["sh", "-c", "bun test"], name: "Test", place: "right", folder: "/home/me/x" }]);
 assert.deepEqual(strings(find(bar.render(), "action-run")), ["Test"]);
+fire(find(menu.render(), "action-a"), "on_hover", true, cx);
 fire(find(menu.render(), "edit-a"), "on_click", {}, cx);
 assert.deepEqual(plain(overlays.at(-1).props), { actions: "edit", id: "a" });
 
@@ -139,7 +142,7 @@ assert.deepEqual(plain(overlays.at(-1).props), { actions: "edit", id: "a" });
   const saved = state["t3-actions.actions"];
   state["t3-actions.actions"] = { ...saved, list: Array.from({ length: 30 }, (_, i) => ({ id: `n${i}`, name: `N${i}`, command: "x", icon: "play" })) };
   const long = load({ actions: "menu" }), press = (k) => fire(find(long.render(), "actions-menu"), "on_key_down", { key: k }, cx);
-  assert.equal(find(long.render(), "actions-list").style.h, 420 - 45, "the list sets its own height: a popup's is only a maximum, and a flexed list would have none");
+  assert.equal(find(long.render(), "actions-list").style.h, 420 - 36, "the list sets its own height: a popup's is only a maximum, and a flexed list would have none");
   assert.ok(!find(long.render(), "action-n20"), "only the rows in view are drawn");
   for (let i = 0; i < 26; i++) press("down");
   assert.ok(find(long.render(), "action-n25"), "the highlight's row is");

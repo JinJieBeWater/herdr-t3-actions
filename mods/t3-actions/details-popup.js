@@ -75,7 +75,7 @@ export function toggleDetails(bounds) {
   // Taken before the popup takes the keyboard: the tab's last terminal, and the folder it works in (terminal-context.js).
   const tab = sp.tabs.find(t => t.active)?.id, f = terminalFor(sp.id, tab) ?? panes().find(p => p.tab === tab && p.terminal);
   const source = { space: sp.id, tab, pane: f?.pane, terminal: f?.terminal, machine: sp.machine, folder: workFolder(sp.id, tab) };
-  // Keys have no press to hang it under: the button's place, from what the header measured (titlebar.js).
+  // Keys have no press to hang it under: the button's place, from the layout's sizes and the open panel's measure (titlebar.js).
   const viewport = globalThis.window?.viewport_size?.();
   // No press: keys opened it, so its first control takes the keyboard (list.js litProp). `at`: where it hangs, for its rows' menus.
   const keys = !bounds;

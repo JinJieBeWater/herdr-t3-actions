@@ -12,7 +12,7 @@ import { trigger } from "./trigger.js";
 import { toggleDetails, dismissDetails, layerClosed, openedDetails, MENU_CLOSED, DETAILS_CLOSED } from "./details-popup.js";
 import { initDetails, detailsView, openInMenu, directoryMenu, detailsItemsMenu } from "./workspace-details.js";
 import { initRangeMenu, rangeMenu, closeRangeMenu, initCommits, commitsMenu } from "./review-details.js";
-import { MOD, ICONS, icon, lit, state, barControl, initMenu, barMenu, detailsMenu } from "./actions.js";
+import { MOD, ICONS, icon, lit, state, barControl, initMenu, actionsMenu } from "./actions.js";
 
 const PLACES = [["tab", "Tab"], ["right", "Right"], ["down", "Down"]];
 
@@ -161,7 +161,7 @@ export default class Actions extends View {
 
   render() {
     const overlay = props()?.actions;
-    if (overlay === "menu") return props().details ? detailsMenu(this) : barMenu(this);
+    if (overlay === "menu") return actionsMenu(this);
     if (overlay === "open-in") return openInMenu(this);
     if (overlay === "directory-menu") return directoryMenu(this);
     if (overlay === "details-items") return detailsItemsMenu(this);

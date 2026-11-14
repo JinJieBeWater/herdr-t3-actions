@@ -1,17 +1,22 @@
-// What the header measured this run, for a popup keys open under a header button (Details, cmd-shift-b), in zoomed px:
-// `end`, what stands right of Details in the tab row (t3-tabs' window part and the row's padding), and `panel`, what the
-// open panel takes from the work column (t3-chrome's head, its padding and the root's divider). Mods share one JS context,
-// so every copy reads the same. scripts/sync.sh copies this to the mods that use it.
-const measured = () => /** @type {{ end?: number, panel?: number }} */ (/** @type {any} */ (globalThis).t3Titlebar ??= {});
+// Where Details' button stands, for a popup keys open under it (cmd-shift-b), in zoomed px. Right of it in the tab row stand the
+// window part, sized by panel.js windowEndPx, and the layout's tabs-end-inset; while the panel is open, the panel too, whose
+// width only t3-chrome's head measures (`panel`: its head, padding and the root's divider). Mods share one JS context, so
+// every copy reads the same. scripts/sync.sh copies this to the mods that use it.
+import { layout } from "herdr";
+import { windowEndPx, layoutNode } from "./panel.js";
 
-/** The header's `part` ("end" or "panel") measured `width` wide, zoomed px. */
-export function noteTitlebar(part, width) { measured()[part] = width; }
+const measured = () => /** @type {{ panel?: number }} */ (/** @type {any} */ (globalThis).t3Titlebar ??= {});
+
+/** The open panel measured `width` wide, zoomed px. */
+export function notePanelWidth(width) { measured().panel = width; }
 
 /** Details' 28px button, centred in the 40px row, in a `viewport` ({ width }) at zoom `z`, the panel `open` or not, zoomed px;
- *  null before what it stands by has drawn, and the popup takes its default place. */
+ *  null, and the popup takes its default place, while the open panel's head hasn't drawn yet or in a layout not this one
+ *  (Herdr's own, where t3-actions stands alone and nothing says where its button is). */
 export function detailsAnchor(viewport, z, open) {
-  const m = measured();
-  if (m.end == null || (open && m.panel == null)) return null;
-  const right = viewport.width - m.end - (open ? m.panel : 0);
+  const panel = measured().panel, inset = layoutNode(layout(), "tabs-end-inset");
+  if (!inset || (open && panel == null)) return null;
+  const end = windowEndPx(open) + (inset.size?.px ?? 0);
+  const right = viewport.width - end * z - (open ? panel : 0);
   return { x: right - 28 * z, y: 6 * z, width: 28 * z, height: 28 * z };
 }

@@ -1,4 +1,4 @@
-// Popup menus that hang off one another, as T3's MenuSub: t3-menu's Snooze, Files' folders as deep as they go, Details' menus
+// Popup menus that hang off one another, as T3's MenuSub: t3-menu's Snooze, Files' Open with, Details' menus
 // and the Commits of Details' Review row. Which popup hangs off which is kept for this run only, in one registry: mods share one JS context
 // (terminal-context.js), so every copy reads the same. A submenu is a popup of its own beside its row (submenu.js places it).
 // scripts/sync.sh copies this to the mods that use it.

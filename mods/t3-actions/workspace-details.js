@@ -18,7 +18,7 @@ import { glow, tip, tipMark } from "./tip.js";
 import { nameText, measuredTooltip } from "./measured-text.js";
 
 const DETAILS_ITEMS = [["environment", "Machine and folder"], ["openIn", "Open in"], ["scripts", "Actions"], ["review", "Review"]];
-export function detailsVisibility() {
+function detailsVisibility() {
   const saved = shared(KEY.detailsItems);
   return Object.fromEntries(DETAILS_ITEMS.map(([id]) => [id, saved?.[id] !== false]));
 }
