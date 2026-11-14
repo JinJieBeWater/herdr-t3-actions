@@ -27,7 +27,8 @@ const strings = (node) => typeof node === "string" ? [node] : node && typeof nod
 function fire(node, event, ...args) {
   assert.ok(node, `missing event target: ${event}`);
   assert.equal(typeof node.handlers[event], "function", event);
-  return node.handlers[event](...args);
+  // No event given: Herdr's own, an empty one and the frame's cx.
+  return node.handlers[event](...(args.length ? args : [{}, cx]));
 }
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
@@ -46,7 +47,7 @@ const env = {
   focused: () => ({ tab: "b", cwd: "/repo" }), panes: () => [], spaces: () => [{ active: true, folder: "/space" }], layout: () => ({}),
   nextCommand: () => commands.length ? Promise.resolve(commands.shift()) : new Promise(() => {}),
 };
-const source = ["button.js", "store.js", "tip.js", "measured-text.js", "focus.js", "list.js", "open-in.js", "panel.js", "terminal-context.js", "submenu.js", "review-git.js", "review-menu.js", "review-scope.js", "workspace-details.js", "review-details.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n").replace("const DISABLED = 0.64;", "const DISABLED = 0.64;\nconst drawButton = button;")
+const source = ["button.js", "store.js", "tip.js", "measured-text.js", "focus.js", "trigger.js", "list.js", "menu-row.js", "open-in.js", "terminal-context.js", "surfaces.js", "panel.js", "submenu.js", "review-git.js", "review-menu.js", "review-scope.js", "workspace-details.js", "review-details.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n").replace("const DISABLED = 0.64;", "const DISABLED = 0.64;\nconst drawButton = button;")
   .replace(/^import .*;\r?\n/gm, "").replace("export default class", "globalThis.Mod = class").replace(/^export (?=(?:async\s+)?function\b|const\b|class\b)/gm, "");
 const cx = { notify() {}, stop_propagation() {}, spawn: (fn) => jobs.push(fn), focus_handle: () => ({ focus() {} }), timer: { every: () => ({ cancel() {} }), after: (_ms, f) => (f(cx), { cancel() {} }) } };
 const load = (props = {}) => {
@@ -269,167 +270,154 @@ delete state["t3-tabs.compact"];
   assert.equal(find(menu.render(), "action-new").style.tab_index, undefined, "rows go by the arrows");
 }
 {
-  const source = { space: "s", tab: "b", terminal: "t9", folder: "/captured", machine: "remote-computer-name-that-is-deliberately-long" };
+  // Details: what it does, not how it's drawn.
+  const source = { space: "s", tab: "b", terminal: "t9", folder: "/captured", machine: null };
+  const panelLayout = () => ({ id: "root", children: [{ id: "work" }, { id: "panel", children: [{ id: "panel-body", children: [{ id: "files" }, { id: "review" }, { id: "panel-empty" }] }] }] });
   env.panes = () => [{ terminal: "t9", tab: "b", cwd: "/captured" }];
-  env.spaces = () => [{ id: "s", active: true, tabs: [{ id: "b", active: true }] }];
-  const entry = load({ details: true });
-  fire(find(entry.render(), "details-toggle"), "on_mouse_down:left", { bounds: { x: 1000, y: 6, width: 28 * zoom, height: 28 * zoom } }, cx);
+  env.spaces = () => [{ id: "s", active: true, machine: null, folder: "/space", tabs: [{ id: "b", active: true }] }];
+  env.focused = () => ({ space: "s", tab: "b", terminal: "t9", cwd: "/captured" });
+
+  // The button opens it on what's in view; a second press, which closed it, doesn't open it again.
+  const entry = load({ details: true }), press = () => fire(find(entry.render(), "details-toggle"), "on_mouse_down:left", { bounds: { x: 1000, y: 6, width: 28 * zoom, height: 28 * zoom } }, cx);
+  press(); fire(find(entry.render(), "details-toggle"), "on_click", {}, cx);
+  const opened = overlays.at(-1);
+  assert.deepEqual([opened.props.actions, plain(opened.props.source)], ["details", { space: "s", tab: "b", terminal: "t9", machine: null, folder: "/captured" }], "the tab's terminal and the folder it works in");
+  assert.ok(vm.runInContext("openedDetails()", entry.testScope), "its button shows it open");
+  const count = overlays.length;
+  press(); entry.testScope.layerClosed(vm.runInContext("openedDetails()", entry.testScope));
   fire(find(entry.render(), "details-toggle"), "on_click", {}, cx);
-  assert.equal(overlays.at(-1).props.actions, "details", "the real entry button click handler opens Details");
-  assert.equal(overlays.at(-1).height, 420, "the host allows the measured popup content to grow");
+  assert.equal(overlays.length, count, "closed by its own button");
+  assert.ok(!vm.runInContext("openedDetails()", entry.testScope));
+
+  // Its height follows what it holds, 420 at most.
   state["t3-actions.actions"] = { list: [] };
   const details = load({ actions: "details", source, overlay: "details" });
-  const root = details.render();
-  assert.equal(find(root, "workspace-details").style.rounded, 16);
-  assert.equal(find(root, "workspace-details").style.shadow_lg, undefined, "no card shadow: the native popup clips it into square corners");
-  assert.ok(find(root, "workspace-details").style.h >= 50, "an open Details scroll viewport has room for a control, never zero height");
-  fire(find(root, "details-content"), "on_size_change", { width: 280 * zoom, height: 240 * zoom }, cx);
-  assert.equal(find(details.render(), "workspace-details").style.h, 242, "Details sizes its viewport from laid-out content plus the border");
-  fire(find(root, "details-content"), "on_size_change", { width: 280 * zoom, height: 2000 * zoom }, cx);
-  assert.equal(find(details.render(), "workspace-details").style.h, 420, "long content is scrollable within the popup's height limit");
-  fire(find(root, "details-content"), "on_size_change", { width: 280 * zoom, height: 112 * zoom }, cx);
-  assert.ok(find(root, "details-machine-name").items.some(child => child.style?.truncate), "visible name truncates without constraining its natural-width sibling");
-  assert.ok(find(root, "details-machine-name").style.whitespace_nowrap !== undefined);
-  assert.equal(find(root, "details-space-menu")?.handlers.on_click, undefined, "a started context is locked, not a space-management button");
-  assert.equal(find(root, "details-path").handlers.on_click, undefined, "folder is a path tooltip, not a separate copy button");
-  assert.equal(find(root, "details-path").kind, "div", "the host only wires tooltips on owned wrappers, not SVGs");
-  assert.equal(find(root, "details-machine-icon").style.tooltip, undefined, "the adjacent visible computer name is not repeated on its glyph");
-  fire(find(root, "details-machine-name"), "on_size_change", { width: 160 * zoom }, cx);
-  fire(find(root, "text-measure-details-machine-name"), "on_size_change", { width: 220 * zoom }, cx);
-  assert.ok(find(details.render(), "tip-details-machine-name"), "a clipped computer name uses the shared measured-text tooltip");
-  assert.ok(find(details.render(), "details-machine-slot").style.flex_1, "adding a tooltip cannot steal the folder icon's space");
-  assert.equal(find(root, "details-context").hoverStyle.bg, undefined, "a locked context cannot light up on initial pointer hover");
-  assert.equal(find(root, "details-path-slot").style.w, 32, "the folder sits in the same 32px end slot as the rows' chevrons");
-  assert.ok(find(root, "action-add"));
-  const detailsClose = [];
-  details.testScope.closeOverlay = id => detailsClose.push(id);
-  fire(find(root, "action-add"), "on_click", {}, cx);
-  assert.deepEqual(detailsClose, [], "opening the action editor keeps details behind it");
-  assert.equal(overlays.at(-1).props.details, "details");
-  assert.equal(find(root, "details-finder").style.opacity, 0.64, "remote open uses the existing disabled token");
-  assert.equal(find(root, "details-finder").handlers.on_click, undefined);
+  details.testScope.layout = panelLayout;
+  fire(find(details.render(), "details-content"), "on_size_change", { width: 280 * zoom, height: 240 * zoom }, cx);
+  assert.equal(find(details.render(), "workspace-details").style.h, 242);
+  fire(find(details.render(), "details-content"), "on_size_change", { width: 280 * zoom, height: 2000 * zoom }, cx);
+  assert.equal(find(details.render(), "workspace-details").style.h, 420);
+
+  // Add action's editor keeps Details behind it; an action runs where Details was opened, and not once that's gone.
+  const closed = []; details.testScope.closeOverlay = id => closed.push(id);
+  fire(find(details.render(), "action-add"), "on_click", {}, cx);
+  assert.deepEqual(closed, []); assert.equal(overlays.at(-1).props.details, "details");
   state["t3-actions.actions"] = { list: [{ id: "a", name: "Run captured", command: "pwd", place: "down" }] };
-  calls.length = 0;
-  fire(find(details.render(), "action-run"), "on_click");
-  assert.deepEqual(detailsClose, [], "running an action does not proactively dismiss its details");
-  assert.equal(calls.at(-1)[1].folder, "/captured", "popup focus cannot replace the source cwd");
-  assert.equal(calls.at(-1)[1].place, "down");
+  calls.length = 0; fire(find(details.render(), "action-run"), "on_click");
+  assert.deepEqual([calls.at(-1)[1].folder, calls.at(-1)[1].place, closed.length], ["/captured", "down", 0]);
   details.testScope.spaces = () => [{ id: "other", active: true, tabs: [] }]; calls.length = 0;
-  fire(find(details.render(), "action-run"), "on_click"); assert.equal(calls.length, 0, "stale source cannot execute");
-  details.testScope.spaces = () => [{ id: "s", active: true, tabs: [{ id: "b", active: true }] }];
-  const picker = load({ actions: "open-in", source: { ...source, machine: null }, targets: ["Finder", "Zed"], details: "parent-details", overlay: "editor-picker" });
+  fire(find(details.render(), "action-run"), "on_click"); assert.equal(calls.length, 0, "a stale source runs nothing");
+  details.testScope.spaces = env.spaces;
+  // A long action name is whole in a tooltip only when it's cut.
+  state["t3-actions.actions"] = { list: [{ id: "a", name: "A deliberately long action name", command: "pwd" }] };
+  fire(find(details.render(), "text-name-action-run"), "on_size_change", { width: 120 * zoom }, cx);
+  fire(find(details.render(), "text-measure-action-run"), "on_size_change", { width: 100 * zoom }, cx);
+  assert.equal(find(details.render(), "tip-action-run"), null);
+  fire(find(details.render(), "text-measure-action-run"), "on_size_change", { width: 240 * zoom }, cx);
+  assert.ok(find(details.render(), "tip-action-run"), "clipped: its whole name");
+
+  // A row's menu is as wide as the row, right edges together, 4 under it.
+  fire(find(details.render(), "details-open-more"), "on_mouse_down:left", { bounds: { x: 900, y: 100, width: 32 * zoom, height: 32 * zoom } }, cx);
+  fire(find(details.render(), "details-open-more"), "on_click", {}, cx);
+  const menu = overlays.at(-1);
+  assert.deepEqual([menu.props.actions, menu.width, Math.round(menu.at.x * 100) / 100, Math.round(menu.at.y * 100) / 100], ["open-in", 262, Math.round((900 + 32 * zoom - 262 * zoom) * 100) / 100, Math.round((100 + 36 * zoom) * 100) / 100]);
+  assert.equal(find(details.render(), "details-open-row").style.bg, theme.foreground + "1f", "its row stays on while it's open");
+  // Details closing takes its menus with it; only Details watches the source.
+  closed.length = 0;
+  details.close();
+  assert.deepEqual(closed, [overlays.length], "its open menu goes with it");
+  assert.equal(find(details.render(), "details-open-row").style.bg, undefined);
+
+  // Open in's menu only picks the app, and closes only itself.
+  const picker = load({ actions: "open-in", source, targets: ["Finder", "Zed"], details: "parent", overlay: "picker" });
   const pickedExec = [], pickedClose = [];
   picker.testScope.exec = async (...args) => { pickedExec.push(args); return { code: 0 }; };
   picker.testScope.closeOverlay = id => pickedClose.push(id);
   fire(find(picker.render(), "open-in-menu"), "on_key_down", { key: "up" }, cx);
-  assert.equal(find(picker.render(), "open-in-1").style.bg, theme.selected, "Up from no selection chooses the final editor");
-  fire(find(picker.render(), "open-in-1"), "on_click");
+  fire(find(picker.render(), "open-in-menu"), "on_key_down", { key: "enter" }, cx);
   await Promise.resolve();
-  assert.equal(pickedExec.length, 0, "choosing an editor changes preference, never opens a directory");
-  assert.equal(state["t3.openTarget"], "Zed");
-  assert.deepEqual(pickedClose, ["editor-picker"], "choosing closes only the picker, not its parent details");
-  const many = load({ actions: "open-in", source: { ...source, machine: null }, targets: Array.from({ length: 20 }, (_, i) => `Editor ${i}`), details: "parent-details", overlay: "many-editors" });
-  assert.equal(find(many.render(), "open-in-list").style.h, 412, "twenty editors scroll in a list capped with the menu at 420");
-  for (let i = 0; i < 19; i++) fire(find(many.render(), "open-in-menu"), "on_key_down", { key: "down" }, cx);
-  assert.ok(find(many.render(), "open-in-18"), "the keys' row is drawn, scrolled into view");
-  const localDetails = load({ actions: "details", source: { ...source, machine: null }, overlay: "local-details" });
-  localDetails.testScope.layout = () => ({ id: "root", children: [{ id: "panel", children: [{ id: "panel-body", children: [{ id: "files" }, { id: "review" }, { id: "panel-empty" }] }] }] });
-  assert.ok(find(localDetails.render(), "details-review"), "Details has Quick Review instead of a Git operations section");
-  assert.equal(find(localDetails.render(), "git-section"), null);
-  fire(find(localDetails.render(), "details-review"), "on_mouse_down:left", { bounds: { x: 900, y: 180, width: 264 * zoom, height: 32 * zoom } }, cx);
-  fire(find(localDetails.render(), "details-review"), "on_click", {}, cx);
-  assert.equal(overlays.at(-1).props.actions, "review-scope", "the row opens the shared Review range selector, not a Git action");
-  const reviewMenu = overlays.at(-1), anchored = load({ ...reviewMenu.props, overlay: "anchored-review" });
-  assert.equal(reviewMenu.at.y + anchored.scopeOrigin.y * zoom, 219.6, "the scope menu starts 4px below Quick Review, without a detached header gap");
-  assert.ok(Math.abs(reviewMenu.at.x + anchored.scopeOrigin.x * zoom - 900) < 0.001, "the scope menu's left edge is anchored to the pressed row");
-  assert.ok(Math.abs(reviewMenu.at.x + (anchored.scopeOrigin.x + anchored.scopeMenuWidth) * zoom - 1190.4) < 0.001, "the scope menu's right edge is anchored to the pressed row");
-  // Pressing the row again while its menu is open: the press outside closes the menu (its close() stamps), the click mustn't reopen it.
-  const before = overlays.length;
-  fire(find(localDetails.render(), "details-review"), "on_mouse_down:left", { bounds: { x: 900, y: 180, width: 264 * zoom, height: 32 * zoom } }, cx);
-  anchored.close();
-  fire(find(localDetails.render(), "details-review"), "on_click", {}, cx);
-  assert.equal(overlays.length, before, "a second click on Quick Review closes its menu, as the sidebar's filter does");
-  delete state["t3-actions.menuClosed"]; // later presses here are new ones, not this close's
-  assert.equal(find(localDetails.render(), "details-review-more").style.w, 32, "Quick Review's chevron lines up with the split chevrons above");
-  assert.equal(find(localDetails.render(), "details-review-scope-slot"), null, "no range shown yet: nothing claimed");
-  state["review.shown"] = { s: { root: "/captured", page: "/worktree" } };
-  assert.deepEqual(strings(find(localDetails.render(), "details-review-scope-slot")), ["Uncommitted"], "the range Review shows, in dim words");
-  state["review.shown"] = { s: { root: "/captured", page: "/commit/1a2b3c4d5e", label: "fix: keep the label" } };
-  assert.deepEqual(strings(find(localDetails.render(), "details-review-scope-slot")), ["fix: keep the label"], "a commit reads as Review's own scope button does, not its sha");
-  delete state["review.shown"];
-  localDetails.targets = ["Finder"];
-  assert.ok(find(localDetails.render(), "details-open-more"), "the editor menu remains available with one target");
-  assert.deepEqual([find(localDetails.render(), "details-open-row").style.bg, find(localDetails.render(), "details-open-row-rule").style.bg, find(localDetails.render(), "details-open-more").items.length], [undefined, undefined, 0],
-    "at rest a row is plain: no fill, no seam, no chevron (a column of chevrons read as an accordion)");
-  fire(find(localDetails.render(), "details-finder"), "on_hover", true, cx);
-  assert.deepEqual([find(localDetails.render(), "details-open-row").style.bg, find(localDetails.render(), "details-open-row-rule").style.bg, find(localDetails.render(), "details-open-more").items.length], [theme.foreground + "12", theme.border, 1],
-    "hovered: one fill under the whole split, its seam and chevron shown");
-  fire(find(localDetails.render(), "details-finder"), "on_hover", false, cx);
-  fire(find(localDetails.render(), "details-open-row"), "on_size_change", { width: 264 * zoom, height: 32 * zoom }, cx);
-  fire(find(localDetails.render(), "details-open-more"), "on_mouse_down:left", { bounds: { x: 900, y: 100, width: 32 * zoom, height: 32 * zoom } }, cx);
-  fire(find(localDetails.render(), "details-open-more"), "on_click", {}, cx);
-  const selectedMenu = overlays.at(-1);
-  assert.equal(selectedMenu.width, 264, "editor menu uses the full split row width");
-  assert.equal(selectedMenu.at.x, 900 + 32 * zoom - 264 * zoom);
-  assert.equal(find(localDetails.render(), "details-open-row").style.bg, theme.foreground + "1f", "menu open keeps the parent split in its card on-state");
-  assert.equal(find(localDetails.render(), "details-open-row-rule").style.bg, theme.border);
-  localDetails.testScope.detailsLayerClosed(overlays.length);
-  assert.equal(find(localDetails.render(), "details-open-row").style.bg, undefined, "closing the menu releases its parent's on-state");
-  fire(find(localDetails.render(), "action-more"), "on_mouse_down:left", { bounds: { x: 900, y: 140, width: 32 * zoom, height: 32 * zoom } }, cx);
-  fire(find(localDetails.render(), "action-more"), "on_click", {}, cx);
-  assert.equal(overlays.at(-1).width, 264, "the Actions picker also anchors to its full split row");
-  assert.equal(find(localDetails.render(), "details-actions-row").style.bg, theme.foreground + "1f");
-  assert.equal(find(localDetails.render(), "details-actions-row-rule").style.bg, theme.border);
-  const panelMenu = load({ actions: "menu", details: "local-details" });
-  assert.equal(find(panelMenu.render(), "edit-a"), null, "panel script Edit stays hidden until hover or keyboard selection");
-  assert.equal(find(panelMenu.render(), "actions-menu-divider"), null, "T3 does not add a separator before Add action");
-  fire(find(panelMenu.render(), "action-a"), "on_hover", true, cx);
-  assert.ok(find(panelMenu.render(), "edit-a"));
-  state["t3-actions.detailsItems"] = { environment: false, openIn: false, scripts: false, review: false };
-  assert.equal(find(localDetails.render(), "details-context"), null, "hidden sections do not reserve rows");
-  assert.ok(find(localDetails.render(), "details-choose-items"), "an empty card can always restore its items");
-  const visibility = load({ actions: "details-items", source, details: "local-details" });
-  fire(find(visibility.render(), "details-item-openIn"), "on_click", {}, cx);
-  assert.equal(state["t3-actions.detailsItems"].openIn, undefined, "default-visible choices need no stored true value");
-  fire(find(visibility.render(), "details-items-reset"), "on_click", {}, cx);
-  assert.deepEqual(plain(state["t3-actions.detailsItems"]), {}, "Reset restores all default items without changing Actions");
-  assert.ok(find(localDetails.render(), "details-context"));
-  const opened = [];
-  localDetails.targets = ["Finder", "Zed"]; state["t3.openTarget"] = "Zed";
-  localDetails.testScope.exec = async (_cmd, args) => { opened.push([...args]); return { code: args.includes("-Ra") ? 1 : 0 }; };
-  fire(find(localDetails.render(), "details-finder"), "on_click", {}, cx);
+  assert.deepEqual([pickedExec.length, state["t3.openTarget"], pickedClose], [0, "Zed", ["picker"]]);
+  // Open in opens there; an uninstalled app falls back to Finder for everyone.
+  const opener = load({ actions: "details", source, overlay: "d2" }), ran = [];
+  opener.targets = ["Finder", "Zed"];
+  opener.testScope.exec = async (_cmd, args) => { ran.push([...args]); return { code: args.includes("-Ra") ? 1 : 0 }; };
+  fire(find(opener.render(), "details-finder"), "on_click", {}, cx);
   await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual(opened, [["-Ra", "Zed"], ["--", "/captured"]]);
-  assert.equal(state["t3.openTarget"], "Finder", "uninstalled target falls back globally");
+  assert.deepEqual(ran, [["-Ra", "Zed"], ["--", "/captured"]]);
+  assert.equal(state["t3.openTarget"], "Finder");
+
+  // What shows: only what's hidden is kept; Reset shows all; with nothing shown, a way back.
+  state["t3-actions.detailsItems"] = { environment: false, openIn: false, scripts: false, review: false };
+  assert.ok(find(details.render(), "details-choose-items") && !find(details.render(), "details-context"));
+  const items = load({ actions: "details-items", source, details: "details" });
+  fire(find(items.render(), "details-item-openIn"), "on_click", {}, cx);
+  assert.equal(state["t3-actions.detailsItems"].openIn, undefined);
+  fire(find(items.render(), "details-items-reset"), "on_click", {}, cx);
+  assert.deepEqual(plain(state["t3-actions.detailsItems"]), {});
+
+  // Quick Review's end names the range a Review tab shows; a closed tab's isn't claimed.
+  assert.equal(find(details.render(), "details-review-scope-slot"), null, "no Review shown: nothing named");
+  state["t3.panels"] = { s: { tabs: [{ id: "review", born: 5 }], active: "review", open: true } };
+  state["review.shown"] = { s: { root: "/captured", page: "/worktree", born: 5 } };
+  assert.deepEqual(strings(find(details.render(), "details-review-scope-slot")), ["Uncommitted"]);
+  state["review.shown"] = { s: { root: "/captured", page: "/commit/1a2b3c", label: "fix: keep", born: 4 } };
+  assert.equal(find(details.render(), "details-review-scope-slot"), null, "a closed Review tab's range");
+  // Its main half shows Review, asking for nothing: the tab shows what it shows, or its default.
+  const asked = state.review; calls.length = 0;
+  fire(find(details.render(), "details-review"), "on_click", {}, cx);
+  assert.ok(calls.some(([name, a]) => name === "layout.select" && a.child === "review") && state.review === asked);
+  // Its chevron: the range menu, under the row, as wide.
+  fire(find(details.render(), "details-review-more"), "on_mouse_down:left", { bounds: { x: 900, y: 180, width: 32 * zoom, height: 32 * zoom } }, cx);
+  fire(find(details.render(), "details-review-more"), "on_click", {}, cx);
+  assert.deepEqual([overlays.at(-1).props.actions, overlays.at(-1).width], ["review-scope", 262]);
+  delete state["t3-actions.menuClosed"];
 }
 {
-  const source = { space: "s", tab: "b", terminal: "t9", folder: "/captured" };
-  const scope = load({ actions: "review-scope", source, details: "parent", overlay: "quick" });
-  assert.equal(find(scope.render(), "details-review-scope").style.h, 500, "the native scope popup's absolute menus have an explicit nonzero layout area");
-  scope.testScope.layout = () => ({ id: "root", children: [{ id: "work" }, { id: "panel", children: [{ id: "panel-body", children: [{ id: "files" }, { id: "review" }, { id: "panel-empty" }] }] }] });
-  const closed = []; scope.testScope.closeOverlay = id => closed.push(id);
-  scope.scopeLoading = false;
-  scope.scopeGit = { root: "/captured", branch: "feature", base: "main", baseRef: "main", unmerged: 2, changed: 1 };
-  scope.picks = { commits: [{ sha: "abc123", subject: "fix: focused review", time: 1 }], unpushed: [] };
-  assert.equal(find(scope.render(), "review-scope"), null, "Quick Review itself is the trigger; the child menu has no second scope button");
-  scope.page = scope.base = "/branch/feature";
-  assert.ok(find(find(scope.render(), "review-scope-menu"), "review-base"), "the existing base control stays inside the one child-menu frame");
-  assert.equal(find(scope.render(), "review-scope"), null, "Changes does not bring back a second trigger either");
-  scope.page = scope.base = "/worktree";
-  fire(find(scope.render(), "scope-uncommitted"), "on_click", {}, cx);
-  assert.equal(state.review.page, "/worktree", "quick pick asks Review for exactly the shared menu's range");
-  assert.equal(state.review.space, "s"); assert.equal(state.review.root, "/captured");
-  assert.equal(state["t3.panels"].s.active, "review", "a range pick opens or activates Review's unique tab");
-  assert.deepEqual(closed, ["quick", "parent"]);
-  closed.length = 0; calls.length = 0;
-  scope.selectReview("/compare/main...feature", { stays: true }, cx);
-  assert.deepEqual(closed, [], "a base remote switch preserves the picker, as on Review");
-  assert.ok(!calls.some(([name]) => name === "t3-actions.dismiss-details"));
+  // The range menu: Review's rows, none checked before Review has shown one; a pick shows Review and asks it for that range.
+  env.layout = () => ({ id: "root", children: [{ id: "work" }, { id: "panel", children: [{ id: "panel-body", children: [{ id: "files" }, { id: "review" }, { id: "panel-empty" }] }] }] });
+  env.exec = async (_cmd, args) => args.includes("--show-toplevel") ? { code: 0, stdout: "/repo\n" } : { code: 0, stdout: "" };
+  delete state["review.shown"]; delete state["t3.panels"];
+  const source = { space: "s", tab: "b", terminal: "t9", folder: "/repo/sub" };
+  const open = async (shown) => {
+    state["review.shown"] = shown;
+    jobs.length = 0;
+    const range = load({ actions: "review-scope", source, details: "parent", overlay: "quick", at: { x: 600, y: 220 } });
+    await jobs.shift()(cx);
+    Object.assign(range, { scopeGit: { root: "/repo", branch: "feature", base: "main", baseRef: "main", unmerged: 2, changed: 0 },
+      picks: { commits: [{ sha: "abc123", subject: "fix: focused review", time: 1 }], unpushed: [] }, refs: [], scopeRoot: "/repo", scopeBase: null });
+    return range;
+  };
+  const label = (range, id) => find(range.render(), id).style.accessibility_label;
+  let range = await open(undefined);
+  assert.ok(!label(range, "scope-uncommitted").endsWith(", shown") && !label(range, "scope-changes").endsWith(", shown"), "nothing claimed shown");
+  assert.notEqual(find(range.render(), "scope-uncommitted").style.bg, theme.selected, "nothing lit on opening");
+  state["t3.panels"] = { s: { tabs: [{ id: "review", born: 9 }], active: "review", open: true } };
+  range = await open({ s: { root: "/repo", page: "/worktree", born: 9 } });
+  assert.ok(label(range, "scope-uncommitted").endsWith(", shown"));
+  assert.equal(find(range.render(), "scope-uncommitted").style.opacity, undefined, "the range shown isn't greyed at nothing");
+  const closed = []; range.testScope.closeOverlay = id => closed.push(id);
+  fire(find(range.render(), "scope-changes"), "on_click", {}, cx);
+  const born = state["t3.panels"].s.tabs.find(t => t.id === "review").born;
+  assert.deepEqual([state.review.page, state.review.root, state.review.born, state.review.analyze], ["/branch/feature", "/repo", born, true], "for the Review tab shown, its born");
+  assert.ok(closed.includes("parent"), "Details goes");
+  // A stale source changes nothing.
   const before = state.review;
-  scope.testScope.spaces = () => [{ id: "other", active: true, tabs: [] }];
-  scope.selectReview("/commit/abc123", {}, cx);
-  assert.equal(state.review, before, "a stale Details source cannot change Review's range");
-  scope.close();
+  range.testScope.spaces = () => [{ id: "other", active: true, tabs: [] }];
+  fire(find(range.render(), "scope-changes"), "on_click", {}, cx);
+  assert.equal(state.review, before);
+  range.testScope.spaces = env.spaces;
+  // Commits opens beside it, a popup of its own; a commit picked there asks for it, its branch's Changes as base.
+  fire(find(range.render(), "scope-commits"), "on_click", {}, cx);
+  const sub = overlays.at(-1);
+  assert.equal(sub.props.actions, "review-commits");
+  assert.ok(sub.at.x >= 600 + (4 + 254) * zoom - 1, "beside its row, as t3-menu's submenus");
+  assert.ok(Math.abs(sub.at.y - (220 + (4 + 2 * 28 + 9 - 5) * zoom)) < 0.01, "its first row level with Commits, under the two ranges and the rule");
+  env.t3DetailsRange = range;
+  const commits = load({ ...sub.props, overlay: "commits" });
+  delete env.t3DetailsRange;
+  fire(find(commits.render(), "scope-commit-abc123"), "on_click", {}, cx);
+  assert.deepEqual([state.review.page, state.review.base], ["/commit/abc123", "/branch/feature"]);
+  range.close();
 }
-console.log("ok: Actions controls/editor; T3 three-row details, single-line name, source cwd, invalidation and editor fallback");
+console.log("ok: Actions controls/editor; Details opens on its source, its menus under their rows and gone with it; Quick Review shows Review and picks its range");
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -5,16 +5,16 @@ import { h_flex, v_flex, InputState, Input } from "gpui-base";
 import { theme, run, openOverlay, closeOverlay, props, shared, setShared, home, focused, panes, spaces, settings, nextCommand } from "herdr";
 import { tip, glow } from "./tip.js";
 import { nameText, measuredTooltip } from "./measured-text.js";
-import { stopsInit, stopsEnd, stop, focusRoot, onStop, pressed, justClosed } from "./focus.js";
+import { stopsInit, stopsEnd, stop, focusRoot, onStop } from "./focus.js";
 import { menuJump, scrollList } from "./list.js";
+import { menuRow, menuRule } from "./menu-row.js";
 import { KEY, migrate } from "./store.js";
-import { button, radiusOf, split } from "./button.js";
-import { toggleDetails, dismissDetails, detailsClosed, initDetails, detailsView, sourceOkay, closeForAction, openedDetails, openInMenu, directoryMenu, detailsRow, CHEVRON, splitHot, detailsLayerClosed, detailsLayerOpen, openDetailsLayer, underDetails, detailsItemsMenu } from "./workspace-details.js";
-import { reviewDetailsView, initReviewScope, reviewScopeView, closeReviewScope } from "./review-details.js";
+import { button, radiusOf, split, cardRow } from "./button.js";
+import { trigger, opener, popupOpen } from "./trigger.js";
+import { toggleDetails, dismissDetails, layerClosed, initDetails, detailsView, sourceOkay, closeForAction, openedDetails, openInMenu, directoryMenu, CHEVRON, splitHot, detailsLayerOpen, openLayer, underRow, detailsItemsMenu, MENU_CLOSED, DETAILS_CLOSED } from "./workspace-details.js";
+import { reviewDetailsView, initRangeMenu, rangeMenu, closeRangeMenu, initCommits, commitsMenu } from "./review-details.js";
 
 const MOD = "t3-actions";
-// Where everyone's saved actions live: another key would lose them, whatever the mod is called.
-const MENU_CLOSED = `${MOD}.menuClosed`;
 const ICONS = ["play", "test", "lint", "configure", "build", "debug"];
 const PLACES = [["tab", "Tab"], ["right", "Right"], ["down", "Down"]];
 const icon = (name) => svg(`mods/${MOD}/icons/action-${ICONS.includes(name) ? name : "play"}.svg`);
@@ -57,10 +57,10 @@ function deleteAction(id) {
 
 // Not shared/button.js: one outline round two halves is T3's ButtonGroup (docs/internals/t3-tokens.md).
 // The bar's control: "▶ Dev | ▾", or "Add action" before there is one. Outlined, not filled: a fill would read as an active tab.
-function control(view, t, stopPress) {
+function control(view, t, stopPress = (_e, cx) => cx.stop_propagation()) {
   if (props()?.actions === "details") return panelControl(view, t);
   // A narrow bar's layout sets it (Herdr T3's bar-measure): the icon alone, the name left to the hover label. Unset, the full control.
-  const s = state(), main = primary(s), compact = props()?.actions === "details" ? false : shared(KEY.compact);
+  const s = state(), main = primary(s), compact = shared(KEY.compact), menuOn = popupOpen(view, "action-more", MENU_CLOSED);
   // T3's xs outline button: its svg hangs 2px into each side, its label sits 4 on, and with the icon alone it's 24 square.
   const ends = (el, wide) => wide ? el.pl(5).pr(7).gap(4) : el.justify_center();
   const box = (id) => h_flex().id(id).h(24).flex_none().items_center().rounded(8).border(1).border_color(t.border).text_size(12).on_mouse_down("left", stopPress);
@@ -74,27 +74,23 @@ function control(view, t, stopPress) {
       .role("button").accessibility_label(`Run ${main.name}`).on_click(() => runAction(main))
       .child(icon(main.icon).size(14)).when(!compact, el => el.child(nameText(view, "action-run", main.name).max_w(140))), 8), { shown: !compact, below: true }))
     .child(div().w(1).h(22).flex_none().bg(t.border))
-    .child(stop(view, t, "action-more", div().id("action-more").h(22).w(23).flex().items_center().justify_center().rounded_r(8).text_color(lit(view, "action-more")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-more"))
-      .role("button").accessibility_label("Actions").on_click((_e, cx) => {
-        view.hot = null; // The menu covers it, before the pointer can report leaving it.
-        if (!justClosed(view, MENU_CLOSED)) openOverlay({ mod: MOD, kind: "popup", at: underBar(view.actionPress), width: MENU_W, height: Math.min(MENU_MAX, MENU_REST + s.list.length * 28), props: { actions: "menu", source: props()?.source, details: props()?.actions === "details" ? props().overlay : null } });
-        cx.notify();
-      })
-      .on_mouse_down("left", (e, cx) => { view.actionPress = e.bounds; pressed(view); stopPress(e, cx); })
+    .child(stop(view, t, "action-more", opener(view, { id: "action-more", closed: MENU_CLOSED, onOpen: (b) => openOverlay({ mod: MOD, kind: "popup", at: underBar(b), width: MENU_W, height: Math.min(MENU_MAX, MENU_REST + s.list.length * 28), props: { actions: "menu", source: props()?.source, details: null } }) })(
+      div().id("action-more").h(22).w(23).flex().items_center().justify_center().rounded_r(8).text_color(menuOn ? t.foreground : lit(view, "action-more"))
+        .when(menuOn, el => el.bg(t.selected)).when(!menuOn, el => el.hover(st => st.bg(t.hover))).on_hover(glow(view, "action-more"))
+        .role("button").accessibility_label("Actions"))
       .child(svg("mods/t3-actions/icons/chevron-down.svg").size(16)), 8));
 }
 
 function panelControl(view, t) {
   const s = state(), main = primary(s), menuOn = detailsLayerOpen("menu");
-  if (!main) return stop(view, t, "action-add", detailsRow(t, "action-add").w_full().role("button").accessibility_label("Add action").cursor_pointer()
+  if (!main) return stop(view, t, "action-add", cardRow(t, "action-add").w_full().role("button").accessibility_label("Add action").cursor_pointer()
     .on_click(() => editor(null)).child(svg("mods/t3-actions/icons/plus.svg").size(16).flex_none().text_color(t.dim)).child("Add action"), 8);
-  return split(t, { id: "details-actions-row", mainId: "action-run", moreId: "action-more", chevron: CHEVRON, size: "row", quiet: true,
+  return split(t, { id: "details-actions-row", mainId: "action-run", moreId: "action-more", chevron: CHEVRON, size: "row",
     hot: splitHot(view, "action-run", "action-more"), on: menuOn, label: `Run ${main.name}`, moreLabel: "Actions" },
-    run => stop(view, t, "action-run", run.on_hover(glow(view, "action-run")).on_click(() => runAction(main))
-      .child(icon(main.icon).size(16).flex_none().text_color(t.dim)).child(div().flex_1().min_w(0).truncate().child(main.name)), 8),
-    more => stop(view, t, "action-more", more.on_hover(glow(view, "action-more"))
-      .on_mouse_down("left", (e, cx) => { view.actionPress = e.bounds; pressed(view); cx.stop_propagation(); })
-      .on_click((_e, cx) => { view.hot = null; if (!justClosed(view, MENU_CLOSED)) openDetailsLayer("menu", { ...underDetails(view, view.actionPress), height: Math.min(MENU_MAX, 36 + s.list.length * 28) }); cx.notify(); }), 8));
+    // Its whole name in a tooltip only when it's cut (measured-text.js), on the half, whose hover it is.
+    run => measuredTooltip(view, t, "action-run", main.name, stop(view, t, "action-run", run.on_hover(glow(view, "action-run")).on_click(() => runAction(main))
+      .child(icon(main.icon).size(16).flex_none().text_color(t.dim)).child(nameText(view, "action-run", main.name, { size: 13, weight: "medium" }).flex_1().whitespace_nowrap()), 8), { below: true }),
+    more => stop(view, t, "action-more", opener(view, { closed: MENU_CLOSED, onOpen: (b) => openLayer("menu", underRow(b, Math.min(MENU_MAX, 36 + s.list.length * 28))) })(more.on_hover(glow(view, "action-more"))), 8));
 }
 
 // The menu takes the keyboard, as the shipped menu does. As T3's, nothing is lit until a key or the pointer gets there.
@@ -109,12 +105,7 @@ function menu(view) {
   const t = theme(), { list } = state(), done = () => closeOverlay(props().overlay), panel = Boolean(props().details), rest = panel ? 36 : MENU_REST;
   const picks = [...list.map(a => () => runAction(a)), () => editor(null)];
   const labels = [...list.map(a => a.name), "Add action"];
-  const row = (id, at, i, label) => h_flex().id(id).h(28).px(8).gap(8).rounded(4).items_center().flex_none()
-    .text_color(t.foreground).when(view.at === at, el => el.bg(t.selected))
-    .role("button").accessibility_label(label)
-    .on_hover((on, cx) => { const to = on ? at : view.at === at ? -1 : view.at; if (to !== view.at) { view.at = to; cx.notify(); } })
-    .on_click(() => { done(); picks[at](); })
-    .child(i).child(div().flex_1().min_w(0).truncate().child(label));
+  const row = (id, at, icon, label, trail = null) => menuRow(view, t, id, { at: [view, "at", at], label, icon, trail, pick: () => { done(); picks[at](); } });
   return focusRoot(view, v_flex().id("actions-menu").size_full().min_h(0).p(4).bg(t.popover).text_size(14)
     .track_focus(view.keys).on_key_down((e, cx) => {
       // On a row's Edit, Enter is Edit's.
@@ -129,11 +120,11 @@ function menu(view) {
       cx.notify();
     })
     // Add action stays outside the list, always in view: with it lit, nothing here is.
-    .child(scrollList(view, "actions-list", { count: list.length, row: 28, height: Math.min(list.length * 28, MENU_MAX - rest), at: view.at < list.length ? view.at : -1, wheeled: (keep) => { if (keep >= 0) view.at = keep; }, draw: (at) => { const a = list[at]; return row(`action-${a.id}`, at, icon(a.icon).size(16).mx(-2).text_color(t.muted), a.name)
-        .child(div().size(24).flex_none().when(!panel || view.at === at || onStop(view) === `edit-${a.id}`, el => el.child(tip(view, t, `edit-${a.id}`, `Edit ${a.name}`, stop(view, t, `edit-${a.id}`, button(t, `edit-${a.id}`, { icon: "mods/t3-actions/icons/settings.svg", label: `Edit ${a.name}`, surface: "card", hot: view.hot === `edit-${a.id}` })
+    .child(scrollList(view, "actions-list", { count: list.length, row: 28, height: Math.min(list.length * 28, MENU_MAX - rest), at: view.at < list.length ? view.at : -1, wheeled: (keep) => { if (keep >= 0) view.at = keep; }, draw: (at) => { const a = list[at]; return row(`action-${a.id}`, at, icon(a.icon).size(16).text_color(t.muted), a.name,
+        div().size(24).flex_none().when(!panel || view.at === at || onStop(view) === `edit-${a.id}`, el => el.child(tip(view, t, `edit-${a.id}`, `Edit ${a.name}`, stop(view, t, `edit-${a.id}`, button(t, `edit-${a.id}`, { icon: "mods/t3-actions/icons/settings.svg", label: `Edit ${a.name}`, surface: "card", hot: view.hot === `edit-${a.id}` })
           .on_hover(glow(view, `edit-${a.id}`)).on_click((_e, cx) => { cx.stop_propagation(); done(); editor(a.id); }), radiusOf()), { below: true })))); } }))
-    .when(!panel, el => el.child(div().id("actions-menu-divider").h(1).mx(8).my(4).flex_none().bg(t.border)))
-    .child(row("action-new", list.length, svg("mods/t3-actions/icons/plus.svg").size(16).mx(-2).text_color(t.muted), "Add action")));
+    .when(!panel, el => el.child(menuRule(t)))
+    .child(row("action-new", list.length, "mods/t3-actions/icons/plus.svg", "Add action")));
 }
 
 // The editor dialog: this copy's own inputs, made once in init.
@@ -250,10 +241,8 @@ export default class Actions extends View {
     if (overlay === "details-items") initMenu(this, cx);
     if (overlay === "confirm") initConfirm(this, cx);
     if (overlay === "details") { stopsInit(this, cx, "modal"); initDetails(this, cx); }
-    if (overlay === "review-scope") { stopsInit(this, cx, "modal"); initReviewScope(this, cx); }
-    if (["menu", "open-in", "directory-menu", "details-items"].includes(overlay) && props()?.source) cx.timer.every(100, () => {
-      if (!sourceOkay(props().source)) closeOverlay(props().overlay);
-    });
+    if (overlay === "review-scope") { stopsInit(this, cx, "modal"); initRangeMenu(this, cx); }
+    if (overlay === "review-commits") { stopsInit(this, cx, "modal"); initCommits(this, cx); }
     if (!overlay) stopsInit(this, cx);
     // The bar's copy answers Delete's dialog: `t3-actions.delete-action:<id>`.
     if (!overlay) cx.spawn(async (cx) => {
@@ -268,11 +257,11 @@ export default class Actions extends View {
 
   close() {
     stopsEnd(this);
-    detailsLayerClosed(props()?.overlay);
-    if (props()?.actions === "review-scope") closeReviewScope(this);
+    if (props()?.actions === "review-scope") closeRangeMenu(this);
     // Every menu, and every layer Details opens (Quick Review's too): a press on its button that closed it mustn't reopen it.
     if (/** @type {any} */ (this).keys || props()?.details) setShared(MENU_CLOSED, Date.now());
-    if (props()?.actions === "details") detailsClosed(props().overlay);
+    // Its own menus go with it; Details, its button shows it gone.
+    if (props()?.overlay) layerClosed(props().overlay);
   }
 
   render() {
@@ -284,21 +273,22 @@ export default class Actions extends View {
     if (overlay === "edit") return editorView(this);
     if (overlay === "confirm") return confirmView(this);
     if (overlay === "details") return detailsView(this, control, reviewDetailsView);
-    if (overlay === "review-scope") return reviewScopeView(this);
+    if (overlay === "review-scope") return rangeMenu(this);
+    if (overlay === "review-commits") return commitsMenu(this);
     const stopPress = (_e, cx) => cx.stop_propagation(), home = shared(KEY.home);
     return focusRoot(this, h_flex().size_full().items_center().justify_end()
       // Home has no project to run them in.
-      .when(!home || !spaces().some(s => s.active && s.id === home), el => el.child(h_flex().id("actions-fit").flex_none().pr(props()?.details ? 4 : 8).items_center().on_size_change((size) => this.fit(size))
+      .when(!home || !spaces().some(s => s.active && s.id === home), el => el.child(h_flex().id("actions-fit").flex_none().pr(props()?.details ? 0 : 8).items_center().on_size_change((size) => this.fit(size))
         .when(!props()?.details, el => el.child(control(this, theme(), stopPress)))
-        .when(Boolean(props()?.details), el => el.child(tip(this, theme(), "details-toggle", "Details", stop(this, theme(), "details-toggle", button(theme(), "details-toggle", { size: "sm", surface: "card", on: Boolean(openedDetails()), icon: "mods/t3-actions/icons/square-menu.svg", label: "Details", hot: this.hot === "details-toggle" })
-          .on_hover(glow(this, "details-toggle")).on_mouse_down("left", (e, cx) => { this.detailsPress = e.bounds; stopPress(e, cx); })
-          .on_click((_e, cx) => { if (!justClosed(this, "t3-actions.detailsClosed")) toggleDetails(this.detailsPress); cx.notify(); }), 8), { action: "t3-tabs.details", below: true }))))));
+        .when(Boolean(props()?.details), el => el.child(trigger(this, theme(), "details-toggle", { icon: "mods/t3-actions/icons/square-menu.svg", label: "Details",
+          action: "t3-tabs.details", below: true, open: Boolean(openedDetails()), closed: DETAILS_CLOSED, onOpen: (b) => toggleDetails(b) }))))));
   }
 
   // With the block's id in props.block, it sizes that block to the control: layout.resize, which Herdr keeps with the
   // layout's clicks. on_size_change reports zoomed pixels; a layout's are logical.
   fit(size) {
-    const id = props()?.block, px = Math.ceil(size.width / (Number(settings()?.zoom) || 1));
+    // The window snaps a zoomed width to whole pixels: up to half a px over its logical width isn't more room needed.
+    const id = props()?.block, px = Math.ceil(size.width / (Number(settings()?.zoom) || 1) - 0.5);
     if (!id || px === this.fitted) return;
     this.fitted = px;
     run("layout.resize", { id, px });

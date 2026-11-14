@@ -1,7 +1,7 @@
 import { div } from "gpui-kit";
 import { Popup } from "gpui-base";
 import { settings } from "herdr";
-import { tip } from "./tip.js";
+import { tip, tipCard, FADE } from "./tip.js";
 
 const textStyle = (el, size, weight) => weight === "medium" ? el.text_size(size).font_medium() : el.text_size(size).font_normal();
 const widthChanged = (view, key, id) => (size, cx) => {
@@ -36,11 +36,10 @@ export function measuredTooltip(view, t, id, label, trigger, { shown = true, ...
 
 // The breadcrumb's original Popup; callers retain their own focus, press, menu and hover timing.
 export function named(view, t, id, label, trigger, { shown = true, at = 0, onHover, onMove } = /** @type {{ shown?: boolean, at?: number, onHover?: Function, onMove?: Function }} */ ({})) {
-  const on = view.details === id && view.detailsIn, fade = /** @type {const} */ ({ duration: 150, easing: "ease-out" });
+  const on = view.details === id && view.detailsIn;
   const card = Popup.new(`details-${id}`, div()).absolute().bottom(0).left(at - 9).size(1)
-    .when(view.details === id || view.detailsOut === id, pop => pop.content(div().id(`details-card-${id}`)
-      .mt(4).max_w(320).px(8).py(4).rounded(6).border(1).border_color(t.border).bg(t.chrome).shadow_md().text_size(12).font_normal().text_color(t.foreground)
-      .opacity(on ? 1 : 0).top(on ? 0 : -4).transition("opacity", fade).transition("top", fade).child(label)));
+    .when(view.details === id || view.detailsOut === id, pop => pop.content(tipCard(t, `details-card-${id}`)
+      .mt(4).opacity(on ? 1 : 0).top(on ? 0 : -4).transition("opacity", FADE).transition("top", FADE).child(label)));
   return trigger.relative().on_hover((hovered, cx) => onHover?.(hovered, isTextCut(view, id, { shown }), cx))
     .on_mouse_move(e => onMove?.(e)).when([view.details, view.detailsOut].includes(id), el => el.child(card));
 }

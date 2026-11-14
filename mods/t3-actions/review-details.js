@@ -1,105 +1,161 @@
+// Details' Quick Review: a split row. Its main half shows Review (the range it's on, or its default); its chevron opens the
+// range menu, a popup under the row, whose Commits opens beside it in another (submenu.js), as t3-menu's Snooze. The rows,
+// reads and picks are Review's own (review-scope.js); a pick shows Review and asks it for that range (panel.js reviewRequest).
 import { div, svg } from "gpui-kit";
 import { v_flex, InputState } from "gpui-base";
-import { props, settings, spaces, panes, shared, setShared, exec, closeOverlay, theme } from "herdr";
-import { stop, focusRoot, within, pressed, justClosed } from "./focus.js";
+import { props, settings, shared, closeOverlay, theme } from "herdr";
+import { stop, focusRoot } from "./focus.js";
+import { opener } from "./trigger.js";
 import { glow, tip } from "./tip.js";
 import { nameText, measuredTooltip } from "./measured-text.js";
-import { DISABLED } from "./button.js";
-import { panelState, showPage } from "./panel.js";
-import { sourceOkay, detailsRow, detailsLayerOpen, openDetailsLayer, CHEVRON } from "./workspace-details.js";
-import { scopeOf, openScope, openBase, scopeMenu, scopeSub, baseMenu, scopeList, baseList, pickListed, pickBase, scopeKey, releaseScope } from "./review-scope.js";
+import { split } from "./button.js";
+import { panelState, showPage, surfaceBorn, reviewRepo, reviewRequest } from "./panel.js";
+import { step, scrollList } from "./list.js";
+import { MENU_ROW } from "./menu-row.js";
+import { hoverRow, subOpened, subLeft, subPlace } from "./submenu.js";
+import { searchField } from "./review-menu.js";
+import { scopeOf, openScope, scopeRows, scopeRow, scopeItems, scopeList, commitRow, pickListed, scopeKey, releaseScope } from "./review-scope.js";
+import { sourceOkay, detailsLayerOpen, openLayer, layerOpen, underRow, splitHot, closeForAction, CHEVRON, MENU_CLOSED } from "./workspace-details.js";
+
+const ICON_DIR = "mods/t3-actions/icons";
+// The range menu at its tallest: four ranges, the rule, Commits, its padding. The app fits a popup to what it draws.
+const RANGE_H = 8 + 4 * MENU_ROW + 9 + MENU_ROW;
+// The Commits submenu: T3's w-80; its list 320 tall at most, under its search (43) and padding.
+const COMMITS_W = 320, COMMITS_LIST = 320;
+
+// What Review shows in `space`, if its tab is still the one that showed it (review.shown's `born`): a closed one's is gone.
+function reviewShown(space) {
+  const shown = shared("review.shown")?.[space];
+  return shown && (shown.born ?? null) === surfaceBorn("review", space) ? shown : null;
+}
 
 function reviewReason(source) {
   return source.machine ? "Review is unavailable on remote spaces." : !source.folder ? "No working directory."
-    : !panelState().pages.includes("review") ? "Install the Review extra to choose a review range." : "";
+    : !panelState().pages.includes("review") ? "Install the Review extra to use Quick Review." : "";
 }
 
-export function reviewDetailsView(view, t, visible) {
+/** Quick Review's section, under Workspace's rule when that shows (`rule`). */
+export function reviewDetailsView(view, t, visible, rule) {
   if (visible.review === false) return null;
   const source = props().source, reason = reviewReason(source), on = detailsLayerOpen("review-scope");
-  const lit = !reason && (on || view.hot === "details-review" || within(view, ["details-review"]));
-  // What Review shows in this space, as its scope button names it; nothing before a first review.
-  const shown = shared("review.shown")?.[source.space], scope = !reason && shown?.page ? { ...scopeOf({ page: shown.page }), ...(shown.label ? { label: shown.label } : {}) } : null;
-  const row = detailsRow(t, "details-review", { locked: Boolean(reason), on }).pr(0).role("button").accessibility_label("Quick Review")
-    .when(Boolean(reason), el => el.opacity(DISABLED).on_hover(glow(view, "details-review")))
-    .when(!reason, el => el.cursor_pointer().on_hover(glow(view, "details-review")).on_mouse_down("left", e => { view.reviewPress = e.bounds; pressed(view); }).on_click(() => {
-      if (justClosed(view, "t3-actions.menuClosed") || !sourceOkay(source)) return;
-      const z = Number(settings().zoom) || 1, viewport = globalThis.window?.viewport_size?.(), width = Math.min(736, (viewport?.width ?? 810) / z - 16), height = Math.min(500, (viewport?.height ?? 660) / z - 32), b = view.reviewPress;
-      openDetailsLayer("review-scope", { width, height, frame: "none", ...(b ? { at: { x: b.x + b.width - width * z, y: b.y + b.height + 4 * z } } : {}), props: { scopeWidth: width, scopeHeight: height, scopeMenuWidth: b ? b.width / z : 264 } });
-    }))
-    .child(svg("mods/t3-actions/icons/pulls-review.svg").size(16).flex_none())
-    .child(div().flex_1().min_w(0).child("Quick Review"))
-    // The range, its whole name in a tooltip only when it's cut, as the computer name's (measured-text.js).
-    .when(Boolean(scope && scope.kind !== "other"), el => el.child(div().id("details-review-scope-slot").flex_none().max_w(120).min_w(0).font_normal()
-      .child(measuredTooltip(view, t, "details-review-scope-label", scope?.label ?? "", nameText(view, "details-review-scope-label", scope?.label ?? "", { size: 12 }).text_color(t.dim).whitespace_nowrap().on_hover(glow(view, "details-review-scope-label")), { below: true }).min_w(0))))
-    // The split rows' 32px chevron slot, so every chevron in the card lines up.
-    .child(div().id("details-review-more").w(32).h_full().flex_none().flex().items_center().justify_center()
-      .when(lit, el => el.child(svg(CHEVRON).size(16).text_color(on ? t.foreground : t.dim))));
-  return v_flex().id("details-review-section").p(8)
-    .when(visible.environment || visible.openIn || visible.scripts, el => el.border_t(1).border_color(t.border))
-    .child(reason ? tip(view, t, "details-review", reason, row, { below: true }) : stop(view, t, "details-review", row, 8));
+  // The range as Review's scope button names it; nothing while no Review tab shows one.
+  const shown = !reason && reviewShown(source.space), label = shown?.page ? shown.label ?? scopeOf({ page: shown.page }).label : "";
+  const row = split(t, { id: "details-review-row", mainId: "details-review", moreId: "details-review-more", chevron: CHEVRON, size: "row",
+    hot: splitHot(view, "details-review", "details-review-more"), on, disabled: Boolean(reason), label: label ? `Quick Review: ${label}` : "Quick Review", moreLabel: "Choose review range" },
+    // The range's whole name in a tooltip only when it's cut, as the machine's (measured-text.js): on the half, whose hover it is.
+    main => measuredTooltip(view, t, "details-review", label, stop(view, t, "details-review", main.on_hover(glow(view, "details-review"))
+      .when(!reason, el => el.on_click(() => { if (sourceOkay(source)) showPage("review"); }))
+      .child(svg(`${ICON_DIR}/pulls-review.svg`).size(16).flex_none())
+      .child(div().flex_1().min_w(0).truncate().child("Quick Review"))
+      .when(Boolean(label), el => el.child(div().id("details-review-scope-slot").flex_none().max_w(120).min_w(0).font_normal()
+        .child(nameText(view, "details-review", label, { size: 12 }).text_color(t.dim).whitespace_nowrap()))), 8), { below: true }),
+    more => stop(view, t, "details-review-more", reason ? more : opener(view, { closed: MENU_CLOSED, onOpen: (b) => {
+      if (!sourceOkay(source)) return false;
+      const place = underRow(b, RANGE_H);
+      openLayer("review-scope", place, { at: place.at ?? null });
+    } })(more.on_hover(glow(view, "details-review-more"))), 8));
+  return v_flex().id("details-review-section").p(8).when(rule, el => el.border_t(1).border_color(t.border))
+    .child(reason ? tip(view, t, "details-review-row", reason, row, { below: true }) : row);
 }
 
-const reviewSourceOkay = view => !view.evicted && sourceOkay(props().source)
-  && (!props().source.terminal || panes().some(p => p.terminal === props().source.terminal && (!p.cwd || p.cwd === props().source.folder)));
+// A pick from either menu: Review shown first, so its request names the tab (born); then Details goes.
+function pickInDetails(view, source) {
+  return (page, { analyze = false, base = undefined }) => {
+    if (!sourceOkay(source)) return;
+    showPage("review", true);
+    reviewRequest(source.space, view.root, page, { base, analyze });
+    closeForAction();
+  };
+}
 
-export function initReviewScope(view, cx) {
+/** The range menu: Review's rows (none lit, the range Review shows checked), read once on opening. */
+export function initRangeMenu(view, cx) {
   const p = props(), source = p.source;
-  view.width = p.scopeWidth || 736; view.height = p.scopeHeight || 500;
-  view.scopeMod = "t3-actions"; view.scopeMenuWidth = p.scopeMenuWidth || 264; view.scopeInMenu = true;
-  view.scopeOrigin = { x: Math.max(0, view.width - view.scopeMenuWidth), y: 0 };
-  view.space = source.space; view.root = source.folder; view.page = "/worktree"; view.base = view.page;
-  view.handled = 0; view.scopeAt = -1; view.scopeListAt = -1; view.baseAt = -1; view.scrollTop = {};
-  view.handle = cx.focus_handle(); view.handle.focus();
-  view.scopeSearch = InputState.new({ placeholder: "Search" });
-  view.refSearch = InputState.new({ placeholder: "Search refs" });
-  view.scopeSearch.on("change", (_e, cx) => { view.scopeListAt = 0; view.scrollTop["scope-list"] = 0; cx.notify(); });
-  view.scopeSearch.on("submit", (_e, cx) => pickListed(view, scopeList(view)[view.scopeListAt], cx));
-  view.refSearch.on("change", (_e, cx) => { view.baseAt = 0; view.scrollTop["base-list"] = 0; cx.notify(); });
-  view.refSearch.on("submit", (_e, cx) => { const item = baseList(view)[view.baseAt]; if (item) pickBase(view, item.value, cx); });
+  // scopeKey's first page (review-scope.js): its Escape is this popup's close.
+  view.popup = "scope"; view.scopePage = null; view.scopeAt = -1; view.s = {}; view.sub = null; view.rowAt = {};
   view.closePopup = () => closeOverlay(p.overlay);
-  view.togglePopup = (name, cx) => {
-    if (view.popup === name) return view.closePopup();
-    view.popup = name;
-    if (name === "scope") { view.handle.focus(); openScope(view, cx); }
-    else if (name === "base") openBase(view, cx);
-    cx.notify();
-  };
-  view.selectReview = (page, options, cx) => {
-    if (!reviewSourceOkay(view) || reviewReason(source)) return;
-    const n = Math.max(Date.now(), Number(shared("review")?.n || 0) + 1);
-    setShared("review", { space: source.space, root: view.root, page, ...(options.base ? { base: options.base } : {}), n, analyze: Boolean(options.analyze) });
-    showPage("review", Boolean(options.stays));
-    if (options.stays) { view.page = page; view.base = options.base || page; cx.notify(); }
-    else { closeOverlay(p.overlay); if (p.details) closeOverlay(p.details); }
-  };
-  view.popup = "scope"; view.scopeLoading = true;
-  cx.spawn(async cx => {
-    const top = await exec("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", "rev-parse", "--show-toplevel"], { cwd: source.folder }).catch(() => null);
-    if (!reviewSourceOkay(view)) return;
-    view.scopeLoading = false;
-    if (top?.code !== 0) view.scopeError = "This directory is not a Git repository.";
+  view.space = source.space; view.root = null; view.page = null;
+  view.handle = cx.focus_handle(); view.handle.focus();
+  // Where it opened, for placing Commits when keys open it before the pointer has found its row.
+  view.origin = p.at ?? globalThis.window?.mouse_position?.() ?? null;
+  view.pick = pickInDetails(view, source);
+  view.openCommits = (cx, lit) => openCommits(view, lit, cx);
+  view.scopeSearch = InputState.new({ placeholder: "Search" });
+  cx.spawn(async (cx) => {
+    const { root, problem } = await reviewRepo(source.space);
+    if (view.closed) return;
+    if (!root) view.scopeError = problem;
     else {
-      view.root = top.stdout.endsWith("\n") ? top.stdout.slice(0, -1) : top.stdout;
-      const shown = shared("review.shown")?.[source.space];
-      if (shown?.root === view.root) { view.page = shown.page; view.base = shown.base || shown.page; }
+      view.root = root;
+      const shown = reviewShown(source.space);
+      if (shown?.root === root) { view.page = shown.page; view.base = shown.base || shown.page; }
       openScope(view, cx);
     }
     cx.notify();
   });
-  cx.timer.every(100, () => { if (!reviewSourceOkay(view)) { releaseScope(view); closeOverlay(p.overlay); } });
+  /** @type {any} */ (globalThis).t3DetailsRange = view;
 }
 
-export function closeReviewScope(view) { view.evicted = true; releaseScope(view); }
+export function closeRangeMenu(view) {
+  view.closed = true; releaseScope(view);
+  if (/** @type {any} */ (globalThis).t3DetailsRange === view) /** @type {any} */ (globalThis).t3DetailsRange = null;
+}
 
-export function reviewScopeView(view) {
-  const t = theme(), origin = view.scopeOrigin, loading = view.scopeLoading || view.scopeGit === undefined;
-  return focusRoot(view, div().id("details-review-scope").w(view.width).h(view.height).relative().cursor_default().track_focus(view.handle)
-    .on_mouse_move(e => { view.paneAt = { x: e.bounds.x, y: e.bounds.y }; })
-    .on_key_down((e, cx) => scopeKey(view, e, cx))
-    .child(v_flex().absolute().left(origin.x).top(origin.y).w(view.scopeMenuWidth)
-      .when(Boolean(loading || view.scopeError), el => el.child(div().p(12).rounded(8).bg(t.popover).text_size(14).text_color(t.dim).child(view.scopeError || "Reading review ranges…")))
-      .when(!loading && !view.scopeError && view.popup === "scope", el => el.child(scopeMenu(view, t))))
-    .when(!loading && !view.scopeError && view.popup === "scope" && Boolean(view.scopePage), el => el.child(scopeSub(view, t)))
-    .when(!loading && !view.scopeError && view.popup === "base", el => el.child(baseMenu(view, t))));
+// Commits beside its row, as t3-menu's Snooze: the row where the pointer last found it, else from where the menu opened.
+function openCommits(view, lit, cx) {
+  if (view.sub && layerOpen(view.sub)) closeOverlay(view.sub);
+  const z = Number(settings().zoom) || 1, rows = scopeRows(view), i = rows.findIndex(r => r.sub), o = view.origin ?? { x: 0, y: 0 };
+  const b = view.rowAt[i] ?? { x: o.x + 4 * z, y: o.y + (4 + i * MENU_ROW + 9) * z, width: (underRow(null, 0).width - 8) * z, height: MENU_ROW * z };
+  const count = scopeList(view).length, h = 8 + 43 + (count ? Math.min(count * MENU_ROW, COMMITS_LIST) : 36);
+  const at = subPlace({ x: b.x / z, y: b.y / z, width: b.width / z, height: b.height / z }, COMMITS_W, 0, (globalThis.window?.viewport_size?.().width ?? 1e6) / z);
+  view.sub = openLayer("review-commits", { width: COMMITS_W, height: h, at: { x: at.x * z, y: at.y * z } }, { lit });
+  subOpened(view.s, "commits", { x: at.x * z, y: at.y * z, width: COMMITS_W * z, height: h * z }, at.side);
+  cx.notify();
+}
+
+export function rangeMenu(view) {
+  const t = theme();
+  // Its Commits closed itself (← or Esc in it, a click beside it): the keyboard comes back here.
+  if (view.sub && !layerOpen(view.sub)) { view.sub = null; subOpened(view.s, null); view.handle.focus(); }
+  const rows = scopeRows(view), loading = !view.scopeError && view.scopeGit === undefined;
+  const row = (r, i) => scopeRow(view, t, r, i, { icons: ICON_DIR, open: Boolean(r.sub) && Boolean(view.sub),
+    also: (el) => el.on_mouse_move((e, cx) => {
+      view.rowAt[i] = e.bounds;
+      hoverRow(view.s, r.sub && r.count ? r.sub : null, e, cx, (key, _b, cx) => key ? openCommits(view, -1, cx) : view.sub && closeOverlay(view.sub));
+    }) });
+  return focusRoot(view, v_flex().id("details-range-menu").w_full().p(4).bg(t.popover).text_size(14).track_focus(view.handle)
+    .on_hover((on) => { if (!on) subLeft(view.s); })
+    .on_key_down((e, cx) => { if (!loading && !view.scopeError) scopeKey(view, e, cx); else if (e.key === "escape") view.closePopup(); })
+    .when(Boolean(view.scopeError || loading), el => el.child(div().id("details-range-note").min_h(28).px(8).flex().items_center().text_color(t.dim).child(view.scopeError || "Reading review ranges…")))
+    .when(!view.scopeError && !loading, el => el.children(scopeItems(t, rows, row))));
+}
+
+/** Commits beside the range menu: what the menu read, its search, its rows. */
+export function initCommits(view, cx) {
+  const range = /** @type {any} */ (globalThis).t3DetailsRange;
+  if (!range) return closeOverlay(props().overlay);
+  for (const k of ["space", "root", "page", "base", "scopeGit", "picks", "refs", "scopeRoot", "scopeBase", "pick"]) view[k] = range[k];
+  view.scopeListAt = props().lit ?? -1;
+  view.scopeSearch = InputState.new({ placeholder: "Search commits" });
+  view.scopeSearch.on("change", (_e, cx) => { view.scopeListAt = 0; view.scrollTop = { ...view.scrollTop, "scope-list": 0 }; cx.notify(); });
+  view.scopeSearch.on("submit", (_e, cx) => pickListed(view, scopeList(view)[view.scopeListAt], cx));
+  view.scopeSearch.focus();
+}
+
+export function commitsMenu(view) {
+  const t = theme(), items = scopeList(view);
+  return focusRoot(view, v_flex().id("details-commits").w_full().p(4).bg(t.popover).text_size(14)
+    .on_key_down((e, cx) => {
+      if (e.keystroke === "escape" || (e.key === "left" && !view.scopeSearch.value())) closeOverlay(props().overlay);
+      else {
+        const to = step(e, view.scopeListAt, items.length);
+        if (to < 0) return;
+        view.scopeListAt = to;
+      }
+      cx.stop_propagation(); cx.notify();
+    })
+    .child(searchField(t, view.scopeSearch, ICON_DIR).mx(8).mt(5).mb(5))
+    .when(items.length > 0, el => el.child(scrollList(view, "scope-list", { count: items.length, row: MENU_ROW, at: view.scopeListAt, height: Math.min(items.length * MENU_ROW, COMMITS_LIST),
+      draw: (i) => commitRow(view, t, items, i, ICON_DIR), wheeled: (keep) => { if (keep >= 0) view.scopeListAt = keep; } })))
+    .when(!items.length, el => el.child(div().id("scope-none").p(8).flex_none().text_center().text_color(t.dim).child("No matches"))));
 }
