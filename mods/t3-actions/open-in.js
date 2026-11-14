@@ -1,4 +1,5 @@
 // This run's LaunchServices probe is shared across Files and Details; never launch after the captured source changes.
+import { image, svg } from "gpui-kit";
 import { exec } from "herdr";
 
 // T3 contracts/editor.ts; LaunchServices also finds bundles absent from this GUI process's PATH.
@@ -32,4 +33,12 @@ export async function openTarget(name, path, isCurrent = () => true) {
   const r = await exec("open", name === "Finder" ? ["--", path] : ["-a", name, "--", path]);
   if (r.code !== 0) throw new Error(r.stderr || "The application couldn't be opened.");
   return name;
+}
+
+// T3's OpenInPicker: brand art in its own colours, a one-colour brand mark in the text's, any other app the dim generic window.
+const APP_ART = { Finder: "finder", "Visual Studio Code": "vscode", VSCodium: "vscodium" }, APP_MARKS = { Cursor: "cursor", Zed: "zed" };
+/** `mod` the folder whose icons/ holds them (scripts/sync.sh copies them into Files). @param {string} mod @param {string} name @param {any} t */
+export function targetIcon(mod, name, t, size = 16) {
+  if (APP_ART[name]) return image(`${mod}/icons/${APP_ART[name]}.svg`).size(size).flex_none();
+  return svg(`${mod}/icons/${APP_MARKS[name] ?? "app-window"}.svg`).size(size).flex_none().text_color(APP_MARKS[name] ? t.foreground : t.dim);
 }

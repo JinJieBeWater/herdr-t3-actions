@@ -8,8 +8,8 @@ import { nameText, measuredTooltip } from "./measured-text.js";
 import { stopsInit, stopsEnd, stop, focusRoot, onStop, pressed, justClosed } from "./focus.js";
 import { menuJump, scrollList } from "./list.js";
 import { KEY, migrate } from "./store.js";
-import { button, radiusOf } from "./button.js";
-import { toggleDetails, dismissDetails, detailsClosed, initDetails, detailsView, sourceOkay, closeForAction, openedDetails, openInMenu, directoryMenu, detailsRow, detailsLayerClosed, detailsLayerOpen, openDetailsLayer, underDetails, detailsItemsMenu } from "./workspace-details.js";
+import { button, radiusOf, split } from "./button.js";
+import { toggleDetails, dismissDetails, detailsClosed, initDetails, detailsView, sourceOkay, closeForAction, openedDetails, openInMenu, directoryMenu, detailsRow, CHEVRON, splitHot, detailsLayerClosed, detailsLayerOpen, openDetailsLayer, underDetails, detailsItemsMenu } from "./workspace-details.js";
 import { reviewDetailsView, initReviewScope, reviewScopeView, closeReviewScope } from "./review-details.js";
 
 const MOD = "t3-actions";
@@ -86,17 +86,15 @@ function control(view, t, stopPress) {
 
 function panelControl(view, t) {
   const s = state(), main = primary(s), menuOn = detailsLayerOpen("menu");
-  if (!main) return stop(view, t, "action-add", detailsRow(t, "action-add").w_full().role("button").accessibility_label("Add action")
+  if (!main) return stop(view, t, "action-add", detailsRow(t, "action-add").w_full().role("button").accessibility_label("Add action").cursor_pointer()
     .on_click(() => editor(null)).child(svg("mods/t3-actions/icons/plus.svg").size(16).flex_none().text_color(t.dim)).child("Add action"), 8);
-  return h_flex().id("details-actions-row").h(32).min_w(0).rounded(8).items_center().when(menuOn || view.actionsHot, el => el.bg(t.foreground + (menuOn ? "1f" : "12")))
-    .on_hover((on, cx) => { view.actionsHot = on; cx.notify(); })
-    .child(stop(view, t, "action-run", detailsRow(t, "action-run").flex_1().rounded_r(0).role("button").accessibility_label(`Run ${main.name}`)
-      .on_click(() => runAction(main)).child(icon(main.icon).size(16).flex_none().text_color(t.dim)).child(div().flex_1().min_w(0).truncate().child(main.name)), 8))
-    .child(div().id("details-actions-rule").w(1).h(16).when(view.actionsHot || menuOn, el => el.bg(t.border)))
-    .child(stop(view, t, "action-more", detailsRow(t, "action-more", { on: menuOn }).w(32).px(0).justify_center().rounded_l(0).role("button").accessibility_label("Actions")
+  return split(t, { id: "details-actions-row", mainId: "action-run", moreId: "action-more", chevron: CHEVRON, size: "row", quiet: true,
+    hot: splitHot(view, "action-run", "action-more"), on: menuOn, label: `Run ${main.name}`, moreLabel: "Actions" },
+    run => stop(view, t, "action-run", run.on_hover(glow(view, "action-run")).on_click(() => runAction(main))
+      .child(icon(main.icon).size(16).flex_none().text_color(t.dim)).child(div().flex_1().min_w(0).truncate().child(main.name)), 8),
+    more => stop(view, t, "action-more", more.on_hover(glow(view, "action-more"))
       .on_mouse_down("left", (e, cx) => { view.actionPress = e.bounds; pressed(view); cx.stop_propagation(); })
-      .on_click((_e, cx) => { view.actionsHot = false; if (!justClosed(view, MENU_CLOSED)) openDetailsLayer("menu", { ...underDetails(view, view.actionPress), height: Math.min(MENU_MAX, 36 + s.list.length * 28) }); cx.notify(); })
-      .child(svg("mods/t3-actions/icons/chevron-down.svg").size(16).text_color(t.dim)), 8));
+      .on_click((_e, cx) => { view.hot = null; if (!justClosed(view, MENU_CLOSED)) openDetailsLayer("menu", { ...underDetails(view, view.actionPress), height: Math.min(MENU_MAX, 36 + s.list.length * 28) }); cx.notify(); }), 8));
 }
 
 // The menu takes the keyboard, as the shipped menu does. As T3's, nothing is lit until a key or the pointer gets there.
@@ -272,7 +270,8 @@ export default class Actions extends View {
     stopsEnd(this);
     detailsLayerClosed(props()?.overlay);
     if (props()?.actions === "review-scope") closeReviewScope(this);
-    if (/** @type {any} */ (this).keys) setShared(MENU_CLOSED, Date.now());
+    // Every menu, and every layer Details opens (Quick Review's too): a press on its button that closed it mustn't reopen it.
+    if (/** @type {any} */ (this).keys || props()?.details) setShared(MENU_CLOSED, Date.now());
     if (props()?.actions === "details") detailsClosed(props().overlay);
   }
 

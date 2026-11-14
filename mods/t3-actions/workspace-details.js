@@ -1,15 +1,15 @@
 // A native popup, never a layout column: opening it cannot resize a terminal (ADR 0017).
-import { div, svg, image } from "gpui-kit";
+import { div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { spaces, panes, focused, props, settings, openOverlay, closeOverlay, exec, notify, run, theme, window, shared, setShared } from "herdr";
-import { stop, focusRoot, pressed, justClosed } from "./focus.js";
-import { DISABLED } from "./button.js";
+import { stop, focusRoot, pressed, justClosed, within } from "./focus.js";
+import { DISABLED, split } from "./button.js";
 import { terminalFor } from "./terminal-context.js";
 import { KEY } from "./store.js";
 import { panelState } from "./panel.js";
-import { menuJump } from "./list.js";
-import { installedTargets, knownTargets, openTarget } from "./open-in.js";
-import { glow } from "./tip.js";
+import { menuJump, scrollList } from "./list.js";
+import { installedTargets, knownTargets, openTarget, targetIcon } from "./open-in.js";
+import { glow, tip, tipMark } from "./tip.js";
 import { nameText, measuredTooltip } from "./measured-text.js";
 
 const DETAILS_ITEMS = [["environment", "Environment and worktree"], ["openIn", "Open in editor"], ["scripts", "Actions"], ["review", "Quick Review"]];
@@ -18,7 +18,11 @@ export function detailsVisibility() {
   return Object.fromEntries(DETAILS_ITEMS.map(([id]) => [id, saved?.[id] !== false]));
 }
 
-function chooseDetailsItems() { return openDetailsLayer("details-items", { width: 220, height: 185 }); }
+// As the actions menu's rows: a leave reported after the next row's enter doesn't unlight that one.
+const litRow = (view, at) => (on, cx) => { const to = on ? at : view.at === at ? -1 : view.at; if (to !== view.at) { view.at = to; cx.notify(); } };
+
+// From its row: under it, its width, as the other rows' menus; from a right-click on the card, where the pointer is.
+function chooseDetailsItems(view, bounds) { return openDetailsLayer("details-items", bounds ? { ...underDetails(view, bounds), height: 185 } : { width: 220, height: 185 }); }
 
 export function detailsItemsMenu(view) {
   const t = theme(), visible = detailsVisibility(), dirty = Object.values(visible).some(on => !on), done = () => closeOverlay(props().overlay);
@@ -32,7 +36,7 @@ export function detailsItemsMenu(view) {
   };
   const row = (id, at, label, disabled = false) => h_flex().id(id).h(28).px(8).gap(8).items_center().rounded(4).text_size(14).text_color(t.foreground)
     .when(disabled, el => el.disabled(true).opacity(DISABLED)).when(view.at === at && !disabled, el => el.bg(t.selected))
-    .when(!disabled, el => el.on_hover((on, cx) => { view.at = on ? at : -1; cx.notify(); }).on_click((_e, cx) => choose(at, cx)))
+    .when(!disabled, el => el.on_hover(litRow(view, at)).on_click((_e, cx) => choose(at, cx)))
     .role("button").accessibility_label(label);
   return focusRoot(view, v_flex().id("details-items-menu").p(4).bg(t.popover).track_focus(view.keys)
     .on_key_down((e, cx) => {
@@ -135,13 +139,15 @@ async function openDirectory(name, source) {
   if (opened) setShared(KEY.openTarget, opened);
 }
 
+const OPEN_IN_MAX = 420;
+
 export function openInMenu(view) {
   const p = props(), t = theme(), done = () => closeOverlay(p.overlay), names = p.targets ?? [];
   const choose = name => { if (!sourceOkay(p.source)) return done(); setShared(KEY.openTarget, name); done(); };
   return focusRoot(view, v_flex().id("open-in-menu").size_full().p(4).bg(t.popover).track_focus(view.keys)
     .on_key_down((e, cx) => {
       if (e.key === "escape") done();
-      else if (e.key === "enter" && view.at >= 0) choose(names[view.at]);
+      else if ((e.key === "enter" || e.key === "space") && view.at >= 0) choose(names[view.at]);
       else {
         if (!names.length) return;
         const to = menuJump(view, e, names, view.at);
@@ -150,16 +156,18 @@ export function openInMenu(view) {
       }
       cx.stop_propagation(); cx.notify();
     }).when(!names.length, el => el.child(h_flex().id("open-in-unavailable").min_h(28).px(8).items_center().text_size(14).text_color(t.dim).child(p.reason ?? "No installed editors found")))
-    .children(names.map((name, i) => h_flex().id(`open-in-${i}`).h(28).px(8).items_center().rounded(4).text_size(14).text_color(t.foreground).cursor_pointer()
-      .when(view.at === i, el => el.bg(t.selected)).gap(8).on_hover((on, cx) => { view.at = on ? i : -1; cx.notify(); }).on_click(() => choose(name)).child(targetIcon(name, t)).child(name))));
+    // list.js's scrollList, OPEN_IN_MAX at most, so twenty editors scroll and the keys' row stays in view.
+    .when(names.length > 0, el => el.child(scrollList(view, "open-in-list", { count: names.length, row: 28, at: view.at, height: Math.min(names.length * 28, OPEN_IN_MAX - 8),
+      wheeled: (keep) => { if (keep >= 0) view.at = keep; },
+      draw: (i) => h_flex().id(`open-in-${i}`).h(28).px(8).items_center().rounded(4).text_size(14).text_color(t.foreground).cursor_pointer()
+        .role("button").accessibility_label(`Open in ${names[i]}`)
+        .when(view.at === i, el => el.bg(t.selected)).gap(8).on_hover(litRow(view, i)).on_click(() => choose(names[i])).child(targetIcon("mods/t3-actions", names[i], t)).child(div().flex_1().min_w(0).truncate().child(names[i])) }))));
 }
 
-const targetFiles = { Finder: "finder", "Visual Studio Code": "vscode", Cursor: "cursor", Zed: "zed" };
-function targetIcon(name, t) {
-  const icon = targetFiles[name] ?? "app-window";
-  return ["finder", "vscode"].includes(icon) ? image(`mods/t3-actions/icons/${icon}.svg`).size(16).flex_none()
-    : svg(`mods/t3-actions/icons/${icon}.svg`).size(16).flex_none().text_color(t.dim);
-}
+
+export const CHEVRON = "mods/t3-actions/icons/chevron-down.svg";
+// The half of a split under the pointer or the keyboard (T3's group-focus-within), for split()'s `hot`.
+export const splitHot = (view, main, more) => view.hot === main || within(view, [main]) ? "main" : view.hot === more || within(view, [more]) ? "more" : null;
 
 export function detailsRow(t, id, { locked = false, on = false } = {}) {
   // docs/internals/t3-tokens.md: 详情 popup geometry, card hover (7%); rows/split groups do not use button().
@@ -173,7 +181,7 @@ export function directoryMenu(view) {
   const copy = cx => { cx.write_to_clipboard(p.source.folder ?? ""); closeOverlay(p.overlay); notify({ title: "Path copied", body: p.source.folder ?? "", level: "success" }); };
   return v_flex().id("details-directory-menu").p(4).bg(t.popover).track_focus(view.keys)
     .on_key_down((e, cx) => { if (e.key === "enter") copy(cx); else if (e.key === "escape") closeOverlay(p.overlay); else return; cx.stop_propagation(); })
-    .child(h_flex().id("details-copy-directory").h(28).px(8).rounded(4).items_center().text_size(14).text_color(t.foreground).hover(el => el.bg(t.selected)).on_click((_e, cx) => copy(cx)).child("Copy full path"));
+    .child(h_flex().id("details-copy-directory").h(28).px(8).rounded(4).items_center().text_size(14).text_color(t.foreground).cursor_pointer().hover(el => el.bg(t.selected)).on_click((_e, cx) => copy(cx)).child("Copy full path"));
 }
 
 export function closeForAction() {
@@ -190,24 +198,21 @@ export function detailsView(view, control, reviewView) {
   const done = () => closeOverlay(p.overlay);
   const reason = remote ? "Local applications cannot open a remote directory" : !s.folder ? "No working directory" : "Open in is only available on macOS";
   const workspace = v_flex().id("details-workspace").p(8)
-    .when(visible.environment, el => el.child(detailsRow(t, "details-context", { locked: true }).accessibility_label(`Run context: ${view.machineName}`)
+    .when(visible.environment, el => el.child(detailsRow(t, "details-context", { locked: true }).pr(0).accessibility_label(`Run context: ${view.machineName}`)
       .when(Boolean(s.folder), el => el.on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openDetailsLayer("directory-menu", { width: 220, height: 36 }); cx.notify(); }))
       .child(div().id("details-machine-icon").size(16).flex_none().child(svg("mods/t3-actions/icons/laptop.svg").size(16).text_color(t.dim)))
       .child(div().id("details-machine-slot").flex_1().min_w(0).child(measuredTooltip(view, t, "details-machine-name", view.machineName, nameText(view, "details-machine-name", view.machineName, { size: 13, weight: "medium" }).id("details-machine-name").w_full().whitespace_nowrap().on_hover(glow(view, "details-machine-name")), { below: true }).w_full().min_w(0)))
-      .child(div().id("details-path").size(16).flex_none().tooltip(s.folder || "No working directory").child(svg("mods/t3-actions/icons/folder.svg").size(16).text_color(t.dim)))))
-    .when(visible.openIn, el => el.child(h_flex().id("details-open-row").h(32).min_w(0).items_center().rounded(8).when(openOn || view.openHot, el => el.bg(t.foreground + (openOn ? "1f" : "12")))
-      .on_hover((on, cx) => { view.openHot = on; cx.notify(); })
-      .on_size_change((size) => { view.detailsWidth = size.width; })
-      .child(stop(view, t, "details-finder", detailsRow(t, "details-finder", { locked: !available }).flex_1().rounded_r(0).role("button").accessibility_label(`Open in ${target}`)
-        .when(!available, el => el.opacity(DISABLED)).tooltip(available ? s.folder : reason).when(available, el => el.on_click(() => {
-          if (!sourceOkay(s)) return;
-          openDirectory(target, s).catch(e => notify({ title: "Couldn't open directory", body: String(e), level: "error" }));
-        })).child(targetIcon(target, t)).child(div().flex_1().min_w(0).truncate().child(`Open in ${target}`)), 8))
-      .child(div().id("details-open-rule").w(1).h(16).when(view.openHot || openOn, el => el.bg(t.border)))
-      .child(stop(view, t, "details-open-more", detailsRow(t, "details-open-more", { on: openOn }).w(32).px(0).justify_center().rounded_l(0).role("button").accessibility_label("Choose application")
+      .child(div().id("details-path-slot").w(32).h_full().flex_none().flex().justify_center().items_center().child(tipMark(view, t, "details-path", s.folder || "No working directory", svg("mods/t3-actions/icons/folder.svg").size(16).text_color(t.dim), { below: true })))))
+    .when(visible.openIn, el => el.child(split(t, { id: "details-open-row", mainId: "details-finder", moreId: "details-open-more", chevron: CHEVRON, size: "row", quiet: true,
+      hot: splitHot(view, "details-finder", "details-open-more"), on: openOn, locked: !available, label: `Open in ${target}`, moreLabel: "Choose application" },
+      main => tip(view, t, "details-finder", available ? s.folder : reason, stop(view, t, "details-finder", main.on_hover(glow(view, "details-finder")).when(available, el => el.on_click(() => {
+        if (!sourceOkay(s)) return;
+        openDirectory(target, s).catch(e => notify({ title: "Couldn't open directory", body: String(e), level: "error" }));
+      })).child(targetIcon("mods/t3-actions", target, t)).child(div().flex_1().min_w(0).truncate().child(`Open in ${target}`)), 8), { below: true }),
+      more => stop(view, t, "details-open-more", more.on_hover(glow(view, "details-open-more"))
         .on_mouse_down("left", (e) => { view.openPress = e.bounds; pressed(view); })
-        .on_click((_e, cx) => { view.openHot = false; if (!justClosed(view, "t3-actions.menuClosed")) openDetailsLayer("open-in", { ...underDetails(view, view.openPress), height: 8 + Math.max(1, targets.length) * 28, props: { targets: available ? targets : [], reason: available ? null : reason } }); cx.notify(); })
-        .child(svg("mods/t3-actions/icons/chevron-down.svg").size(16).text_color(t.dim)), 8))))
+        .on_click((_e, cx) => { view.hot = null; if (!justClosed(view, "t3-actions.menuClosed")) openDetailsLayer("open-in", { ...underDetails(view, view.openPress), height: Math.min(OPEN_IN_MAX, 8 + Math.max(1, targets.length) * 28), props: { targets: available ? targets : [], reason: available ? null : reason } }); cx.notify(); }), 8))
+      .on_size_change((size) => { view.detailsWidth = size.width; })))
     .when(visible.scripts, el => el.child(control(view, t, (_e, cx) => cx.stop_propagation())));
   const content = v_flex().id("details-content").w_full().flex_none()
     .on_size_change((size, cx) => {
@@ -215,11 +220,13 @@ export function detailsView(view, control, reviewView) {
       if (height > 0 && height !== view.detailsHeight) { view.detailsHeight = height; cx.notify(); }
     })
     .when(hasWorkspace, el => el.child(workspace)).when(Boolean(review), el => el.child(review))
-    .when(!hasWorkspace && !review, el => el.child(div().p(8).child(stop(view, t, "details-choose-items", detailsRow(t, "details-choose-items").role("button").accessibility_label("Choose what to show")
-      .on_click((_e, cx) => { chooseDetailsItems(); cx.notify(); }).child(svg("mods/t3-actions/icons/sliders-horizontal.svg").size(16).text_color(t.dim)).child("Choose what to show"), 8))));
+    .when(!hasWorkspace && !review, el => el.child(div().p(8).child(stop(view, t, "details-choose-items", detailsRow(t, "details-choose-items").role("button").accessibility_label("Choose what to show").cursor_pointer()
+      .on_mouse_down("left", (e) => { view.itemsPress = e.bounds; pressed(view); })
+      .on_click((_e, cx) => { const b = view.itemsPress; view.itemsPress = null; if (!justClosed(view, "t3-actions.menuClosed")) chooseDetailsItems(view, b); cx.notify(); }).child(svg("mods/t3-actions/icons/sliders-horizontal.svg").size(16).text_color(t.dim)).child("Choose what to show"), 8))));
+  // No shadow: the native popup is the card's own size and would clip one into square corners.
   // A root scroller with only max-height measures to zero in a native popup (layout-implementation.md).
-  return focusRoot(view, v_flex().id("workspace-details").w_full().h(Math.min(420, Math.max(50, (view.detailsHeight ?? 112) + 2))).max_h(420).min_h(50).overflow_y_scrollbar().rounded(16).border(1).border_color(t.border).bg(t.popover).shadow_lg()
+  return focusRoot(view, v_flex().id("workspace-details").w_full().h(Math.min(420, Math.max(50, (view.detailsHeight ?? 112) + 2))).max_h(420).min_h(50).overflow_y_scrollbar().rounded(16).border(1).border_color(t.border).bg(t.popover)
     .track_focus(view.detailsKeys).on_key_down((e, cx) => { if (e.key === "escape") { done(); cx.stop_propagation(); } })
-    .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); chooseDetailsItems(); cx.notify(); })
+    .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); chooseDetailsItems(view); cx.notify(); })
     .child(content));
 }

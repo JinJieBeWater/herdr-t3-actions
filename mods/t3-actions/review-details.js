@@ -1,11 +1,13 @@
 import { div, svg } from "gpui-kit";
 import { v_flex, InputState } from "gpui-base";
 import { props, settings, spaces, panes, shared, setShared, exec, closeOverlay, theme } from "herdr";
-import { stop, focusRoot } from "./focus.js";
+import { stop, focusRoot, within, pressed, justClosed } from "./focus.js";
+import { glow, tip } from "./tip.js";
+import { nameText, measuredTooltip } from "./measured-text.js";
 import { DISABLED } from "./button.js";
 import { panelState, showPage } from "./panel.js";
-import { sourceOkay, detailsRow, detailsLayerOpen, openDetailsLayer } from "./workspace-details.js";
-import { openScope, openBase, scopeMenu, scopeSub, baseMenu, scopeList, baseList, pickListed, pickBase, scopeKey, releaseScope } from "./review-scope.js";
+import { sourceOkay, detailsRow, detailsLayerOpen, openDetailsLayer, CHEVRON } from "./workspace-details.js";
+import { scopeOf, openScope, openBase, scopeMenu, scopeSub, baseMenu, scopeList, baseList, pickListed, pickBase, scopeKey, releaseScope } from "./review-scope.js";
 
 function reviewReason(source) {
   return source.machine ? "Review is unavailable on remote spaces." : !source.folder ? "No working directory."
@@ -15,19 +17,27 @@ function reviewReason(source) {
 export function reviewDetailsView(view, t, visible) {
   if (visible.review === false) return null;
   const source = props().source, reason = reviewReason(source), on = detailsLayerOpen("review-scope");
-  const row = detailsRow(t, "details-review", { locked: Boolean(reason), on }).role("button").accessibility_label("Quick Review")
-    .when(Boolean(reason), el => el.opacity(DISABLED).tooltip(reason))
-    .when(!reason, el => el.cursor_pointer().on_mouse_down("left", e => { view.reviewPress = e.bounds; }).on_click(() => {
-      if (!sourceOkay(source)) return;
+  const lit = !reason && (on || view.hot === "details-review" || within(view, ["details-review"]));
+  // What Review shows in this space, as its scope button names it; nothing before a first review.
+  const shown = shared("review.shown")?.[source.space], scope = !reason && shown?.page ? { ...scopeOf({ page: shown.page }), ...(shown.label ? { label: shown.label } : {}) } : null;
+  const row = detailsRow(t, "details-review", { locked: Boolean(reason), on }).pr(0).role("button").accessibility_label("Quick Review")
+    .when(Boolean(reason), el => el.opacity(DISABLED).on_hover(glow(view, "details-review")))
+    .when(!reason, el => el.cursor_pointer().on_hover(glow(view, "details-review")).on_mouse_down("left", e => { view.reviewPress = e.bounds; pressed(view); }).on_click(() => {
+      if (justClosed(view, "t3-actions.menuClosed") || !sourceOkay(source)) return;
       const z = Number(settings().zoom) || 1, viewport = globalThis.window?.viewport_size?.(), width = Math.min(736, (viewport?.width ?? 810) / z - 16), height = Math.min(500, (viewport?.height ?? 660) / z - 32), b = view.reviewPress;
       openDetailsLayer("review-scope", { width, height, frame: "none", ...(b ? { at: { x: b.x + b.width - width * z, y: b.y + b.height + 4 * z } } : {}), props: { scopeWidth: width, scopeHeight: height, scopeMenuWidth: b ? b.width / z : 264 } });
     }))
     .child(svg("mods/t3-actions/icons/pulls-review.svg").size(16).flex_none())
     .child(div().flex_1().min_w(0).child("Quick Review"))
-    .child(svg("mods/t3-actions/icons/chevron-down.svg").size(16).text_color(t.dim));
+    // The range, its whole name in a tooltip only when it's cut, as the computer name's (measured-text.js).
+    .when(Boolean(scope && scope.kind !== "other"), el => el.child(div().id("details-review-scope-slot").flex_none().max_w(120).min_w(0).font_normal()
+      .child(measuredTooltip(view, t, "details-review-scope-label", scope?.label ?? "", nameText(view, "details-review-scope-label", scope?.label ?? "", { size: 12 }).text_color(t.dim).whitespace_nowrap().on_hover(glow(view, "details-review-scope-label")), { below: true }).min_w(0))))
+    // The split rows' 32px chevron slot, so every chevron in the card lines up.
+    .child(div().id("details-review-more").w(32).h_full().flex_none().flex().items_center().justify_center()
+      .when(lit, el => el.child(svg(CHEVRON).size(16).text_color(on ? t.foreground : t.dim))));
   return v_flex().id("details-review-section").p(8)
     .when(visible.environment || visible.openIn || visible.scripts, el => el.border_t(1).border_color(t.border))
-    .child(reason ? row : stop(view, t, "details-review", row, 8));
+    .child(reason ? tip(view, t, "details-review", reason, row, { below: true }) : stop(view, t, "details-review", row, 8));
 }
 
 const reviewSourceOkay = view => !view.evicted && sourceOkay(props().source)
