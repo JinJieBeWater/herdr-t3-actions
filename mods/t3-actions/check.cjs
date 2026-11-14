@@ -415,6 +415,11 @@ delete state["t3-tabs.compact"];
   env.t3DetailsRange = range;
   const commits = load({ ...sub.props, overlay: "commits" });
   delete env.t3DetailsRange;
+  // A commit row lights under the pointer and goes out when it leaves, as every menu row (menu-row.js).
+  fire(find(commits.render(), "scope-commit-abc123"), "on_hover", true, cx);
+  assert.equal(find(commits.render(), "scope-commit-abc123").style.bg, theme.selected);
+  fire(find(commits.render(), "scope-commit-abc123"), "on_hover", false, cx);
+  assert.notEqual(find(commits.render(), "scope-commit-abc123").style.bg, theme.selected, "off it, unlit");
   fire(find(commits.render(), "scope-commit-abc123"), "on_click", {}, cx);
   assert.deepEqual([state.review.page, state.review.base], ["/commit/abc123", "/branch/feature"]);
   range.close();
