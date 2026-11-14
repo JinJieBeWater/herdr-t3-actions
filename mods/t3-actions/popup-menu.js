@@ -5,13 +5,16 @@
 import { openOverlay, closeOverlay, props, settings, shared } from "herdr";
 import { subPlace, subOpened } from "./submenu.js";
 import { MENU_ROW } from "./menu-row.js";
+import { litProp } from "./list.js";
 
-// id → { mod, parent, kind }: the popup it hangs off (null: a top one) and what it is, for a row's on state (hasOpen).
-const popups = () => /** @type {Map<string, { mod: string, parent: string | null, kind: string | null }>} */ (/** @type {any} */ (globalThis).t3Popups ??= new Map());
+// id → { mod, parent, kind, back? }: the popup it hangs off (null: a top one), what it is, for a row's on state (hasOpen), and
+// for a submenu, how its menu takes the keyboard back when it closes.
+const popups = () => /** @type {Map<string, { mod: string, parent: string | null, kind: string | null, back?: () => void }>} */ (/** @type {any} */ (globalThis).t3Popups ??= new Map());
 
-/** Opens openOverlay's `spec` as a popup hanging off `parent` (a popup's id, or null), recorded as `kind`: its id. */
-export function openPopup(spec, parent = null, kind = null) {
-  const id = openOverlay({ kind: "popup", ...spec });
+/** Opens openOverlay's `spec` as a popup hanging off `parent` (a popup's id, or null), recorded as `kind`: its id. `keys`: opened
+ *  by keys, so its first row lights (list.js litProp). */
+export function openPopup(spec, parent = null, kind = null, keys = false) {
+  const id = openOverlay({ kind: "popup", ...spec, props: { ...spec.props, ...litProp(keys) } });
   popups().set(id, { mod: spec.mod, parent, kind });
   return id;
 }
@@ -21,10 +24,13 @@ export const isOpen = (id) => popups().has(id);
 /** Whether popup `parent` has a `kind` popup open off it. */
 export const hasOpen = (parent, kind) => [...popups().values()].some((m) => m.parent === parent && m.kind === kind);
 
-/** In a popup's close(): it leaves the registry, and what hangs off it closes with it. */
+/** In a popup's close(): it leaves the registry, and what hangs off it closes with it, leaving first so it hands nothing back.
+ *  A submenu closing on its own gives its menu the keyboard here: Herdr refuses focus() while a view draws (subGone). */
 export function menuClosed(id) {
+  const me = popups().get(id);
   popups().delete(id);
   for (const [child, m] of popups()) if (m.parent === id) { popups().delete(child); closeOverlay(child); }
+  me?.back?.();
 }
 
 /** Closes every top popup of `mod` (cmd-w), what hangs off them with them: whether there was one. */
@@ -45,19 +51,21 @@ export function closeChain() {
 
 /** Opens row `i`'s submenu beside it, closing the one open: `key` names it for submenu.js's hoverRow, `spec` is openOverlay's
  *  with the submenu's `width` and `height`. The row is where the pointer last found it (`view.rowsAt[i]`), else `row`: its top
- *  and width inside the menu, in the menu's px. Its props get `parents`, this popup and the ones it hangs off. */
-export function openBeside(view, i, key, row, spec, kind = null) {
+ *  and width inside the menu, in the menu's px. Its props get `parents`, this popup and the ones it hangs off. `keys`: → or
+ *  Enter opened it, so its first row lights. */
+export function openBeside(view, i, key, row, spec, kind = null, keys = false) {
   closeSub(view);
   const p = props() ?? {}, z = Number(settings()?.zoom) || 1;
   // shortcut: with no row seen yet (keys only), the row is placed from the pointer where the menu opened, as Herdr opens it
   // there; a menu Herdr pushed back into the window puts its submenu off by as much. Upgrade if Herdr reports where an element is.
   const o = view.origin ?? { x: 0, y: 0 };
   const b = view.rowsAt[i] ?? { x: o.x + 4 * z, y: o.y + row.top * z, width: row.width * z, height: MENU_ROW * z };
-  // Herdr keeps a popup in the window, but doesn't flip it: subPlace does, in the menu's own px.
+  // Herdr keeps a popup in the window, but doesn't flip it: subPlace does, in the menu's own px, narrowed to the room it has.
   const at = subPlace({ x: b.x / z, y: b.y / z, width: b.width / z, height: b.height / z }, spec.width, 0, (/** @type {any} */ (globalThis).window?.viewport_size?.().width ?? 1e6) / z);
-  const id = openPopup({ ...spec, at: { x: at.x * z, y: at.y * z }, props: { ...spec.props, parents: [...(p.parents ?? []), p.overlay] } }, p.overlay, kind);
+  const id = openPopup({ ...spec, width: at.width, at: { x: at.x * z, y: at.y * z }, props: { ...spec.props, parents: [...(p.parents ?? []), p.overlay] } }, p.overlay, kind, keys);
+  popups().get(id).back = () => view.keys.focus();
   view.sub = { id, row: i };
-  subOpened(view.s, key, { x: at.x * z, y: at.y * z, width: spec.width * z, height: spec.height * z }, at.side);
+  subOpened(view.s, key, { x: at.x * z, y: at.y * z, width: at.width * z, height: spec.height * z }, at.side);
   return id;
 }
 
@@ -70,9 +78,9 @@ export function closeSub(view) {
   view.keys.focus();
 }
 
-/** In render: the submenu closed itself (← or Esc in it, a click beside it), so the keyboard comes back here. `stamp` is the key
- *  its close() writes: reading it redraws this menu then. */
+/** In render: the submenu closed itself (← or Esc in it, a click beside it); its row goes out. `stamp` is the key its close()
+ *  writes: reading it redraws this menu then. The keyboard came back in its close (menuClosed): focus() here would throw. */
 export function subGone(view, stamp) {
   shared(stamp);
-  if (view.sub && !popups().has(view.sub.id)) { view.sub = null; subOpened(view.s, null); view.keys.focus(); }
+  if (view.sub && !popups().has(view.sub.id)) { view.sub = null; subOpened(view.s, null); }
 }

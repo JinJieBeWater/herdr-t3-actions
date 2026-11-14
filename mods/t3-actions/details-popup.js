@@ -22,10 +22,11 @@ export const openedDetails = () => reg().id;
 /** Where a row's menu goes: as wide as the row, 4 under it, right edges together; `b`, the pressed half's bounds. */
 export const underRow = (b, height) => ({ width: ROW_W, height, ...hang(b, ROW_W) });
 
-/** Opens a menu of this popup's, `kind` its props.actions: it shares Details' source and hangs off this popup. */
-export function openLayer(kind, place, extra = {}) {
+/** Opens a menu of this popup's, `kind` its props.actions: it shares Details' source and hangs off this popup. `keys`: opened
+ *  by keys (a button's opener got no press: `!b`), so its first row lights (list.js propsLit in its init). */
+export function openLayer(kind, place, extra = {}, keys = false) {
   const p = props(), root = p.actions === "details" ? p.overlay : p.details;
-  return openPopup({ mod: "t3-actions", ...place, props: { ...extra, actions: kind, source: p.source, details: root, parents: [...(p.parents ?? []), p.overlay] } }, p.overlay, kind);
+  return openPopup({ mod: "t3-actions", ...place, props: { ...extra, actions: kind, source: p.source, details: root, parents: [...(p.parents ?? []), p.overlay] } }, p.overlay, kind, keys);
 }
 
 /** A popup of this mod's closed: its own menus go with it; Details gone, its button shows it. */

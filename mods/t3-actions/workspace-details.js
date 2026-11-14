@@ -51,7 +51,7 @@ export function initDetails(view, cx) {
 
 // From its row: under it, as the other rows' menus; from a right-click on the card, where the pointer is.
 const ITEMS_H = 8 + 28 + DETAILS_ITEMS.length * MENU_ROW + 9 + MENU_ROW;
-function chooseDetailsItems(b) { return openLayer("details-items", b ? underRow(b, ITEMS_H) : { width: 220, height: ITEMS_H }); }
+function chooseDetailsItems(b, keys = false) { return openLayer("details-items", b ? underRow(b, ITEMS_H) : { width: 220, height: ITEMS_H }, {}, keys); }
 
 export function detailsItemsMenu(view) {
   const t = theme(), visible = detailsVisibility(), dirty = Object.values(visible).some(on => !on);
@@ -113,7 +113,7 @@ function openInRow(view, t, s) {
       openDirectory(target, s).catch(e => notify({ title: "Couldn't open directory", body: String(e), level: "error" }));
     })).child(targetIcon("mods/t3-actions", target, t)).child(div().flex_1().min_w(0).truncate().child(`Open in ${target}`)), 8), { below: true }),
     more => stop(view, t, "details-open-more", opener(view, { closed: MENU_CLOSED, onOpen: (b) => openLayer("open-in", underRow(b, openInHeight(available ? targets : [])),
-      { targets: available ? targets : [], reason: available ? null : reason }) })(more.on_hover(glow(view, "details-open-more"))), 8));
+      { targets: available ? targets : [], reason: available ? null : reason }, !b) })(more.on_hover(glow(view, "details-open-more"))), 8));
 }
 
 /** The card: Workspace (machine, Open in, Actions) then Quick Review, as T3's thread details. */
@@ -132,7 +132,7 @@ export function detailsView(view) {
       if (height > 0 && height !== view.detailsHeight) { view.detailsHeight = height; cx.notify(); }
     })
     .when(shown > 0, el => el.child(workspace)).when(Boolean(review), el => el.child(review))
-    .when(!shown && !review, el => el.child(div().p(8).child(stop(view, t, "details-choose-items", opener(view, { closed: MENU_CLOSED, onOpen: (b) => chooseDetailsItems(b) })(cardRow(t, "details-choose-items", { on: hasOpen(props().overlay, "details-items") }).role("button").accessibility_label("Choose what to show").cursor_pointer())
+    .when(!shown && !review, el => el.child(div().p(8).child(stop(view, t, "details-choose-items", opener(view, { closed: MENU_CLOSED, onOpen: (b) => chooseDetailsItems(b, !b) })(cardRow(t, "details-choose-items", { on: hasOpen(props().overlay, "details-items") }).role("button").accessibility_label("Choose what to show").cursor_pointer())
       .child(svg("mods/t3-actions/icons/sliders-horizontal.svg").size(16).text_color(t.dim)).child("Choose what to show"), 8))));
   // No shadow: the native popup is the card's own size and would clip one into square corners.
   // A root scroller with only max-height measures to zero in a native popup (layout-implementation.md): its height is set.

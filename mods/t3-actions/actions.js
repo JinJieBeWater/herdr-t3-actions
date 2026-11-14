@@ -6,7 +6,7 @@ import { theme, run, openOverlay, closeOverlay, props, shared, setShared, home, 
 import { tip, glow } from "./tip.js";
 import { nameText, measuredTooltip } from "./measured-text.js";
 import { stopsInit, stop, focusRoot, onStop } from "./focus.js";
-import { menuKeys, scrollList } from "./list.js";
+import { menuKeys, scrollList, litProp, propsLit } from "./list.js";
 import { menuRow, menuRule } from "./menu-row.js";
 import { KEY } from "./store.js";
 import { button, radiusOf, split, cardRow } from "./button.js";
@@ -65,7 +65,7 @@ export function barControl(view, t, stopPress = (_e, cx) => cx.stop_propagation(
       .role("button").accessibility_label(`Run ${main.name}`).on_click(() => runAction(main))
       .child(icon(main.icon).size(14)).when(!compact, el => el.child(nameText(view, "action-run", main.name).max_w(140))), 8), { shown: !compact, below: true }))
     .child(div().w(1).h(22).flex_none().bg(t.border))
-    .child(stop(view, t, "action-more", opener(view, { id: "action-more", closed: MENU_CLOSED, onOpen: (b) => openOverlay({ mod: MOD, kind: "popup", ...underBar(b), width: MENU_W, height: Math.min(MENU_MAX, MENU_REST + s.list.length * 28), props: { actions: "menu", source: props()?.source, details: null } }) })(
+    .child(stop(view, t, "action-more", opener(view, { id: "action-more", closed: MENU_CLOSED, onOpen: (b) => openOverlay({ mod: MOD, kind: "popup", ...underBar(b), width: MENU_W, height: Math.min(MENU_MAX, MENU_REST + s.list.length * 28), props: { actions: "menu", source: props()?.source, details: null, ...litProp(!b) } }) })(
       div().id("action-more").h(22).w(23).flex().items_center().justify_center().rounded_r(8).text_color(menuOn ? t.foreground : lit(view, "action-more"))
         .when(menuOn, el => el.bg(t.selected)).when(!menuOn, el => el.hover(st => st.bg(t.hover))).on_hover(glow(view, "action-more"))
         .role("button").accessibility_label("Actions"))
@@ -82,12 +82,12 @@ export function detailsControl(view, t) {
     // Its whole name in a tooltip only when it's cut (measured-text.js), on the half, whose hover it is.
     run => measuredTooltip(view, t, "action-run", main.name, stop(view, t, "action-run", run.on_hover(glow(view, "action-run")).on_click(() => runAction(main))
       .child(icon(main.icon).size(16).flex_none().text_color(t.dim)).child(nameText(view, "action-run", main.name, { size: 13, weight: "medium" }).flex_1().whitespace_nowrap()), 8), { below: true }),
-    more => stop(view, t, "action-more", opener(view, { closed: MENU_CLOSED, onOpen: (b) => openLayer("menu", underRow(b, Math.min(MENU_MAX, 36 + s.list.length * 28))) })(more.on_hover(glow(view, "action-more"))), 8));
+    more => stop(view, t, "action-more", opener(view, { closed: MENU_CLOSED, onOpen: (b) => openLayer("menu", underRow(b, Math.min(MENU_MAX, 36 + s.list.length * 28)), {}, !b) })(more.on_hover(glow(view, "action-more"))), 8));
 }
 
 // The menu takes the keyboard, as the shipped menu does. As T3's, nothing is lit until a key or the pointer gets there.
 export function initMenu(view, cx) {
-  view.at = -1;
+  view.at = propsLit();
   view.keys = cx.focus_handle();
   view.keys.focus();
   stopsInit(view, cx, "modal");

@@ -11,6 +11,7 @@ import { nameText, measuredTooltip } from "./measured-text.js";
 import { split } from "./button.js";
 import { panelState, showPage, reviewRepo, reviewRequest, reviewShown } from "./panel.js";
 import { MENU_ROW } from "./menu-row.js";
+import { propsLit } from "./list.js";
 import { hoverRow, subLeft } from "./submenu.js";
 import { openBeside, closeSub, subGone, closeChain, hasOpen } from "./popup-menu.js";
 import { scopeOf, openScope, scopeRows, scopeRow, scopeItems, scopeList, pickListed, menuKey, commitsKey, commitsBody, releaseScope } from "./review-scope.js";
@@ -46,7 +47,7 @@ export function reviewDetailsView(view, t, visible, rule) {
     more => stop(view, t, "details-review-more", reason ? more : opener(view, { closed: MENU_CLOSED, onOpen: (b) => {
       if (!sourceOkay(source)) return false;
       const place = underRow(b, RANGE_H);
-      openLayer("review-scope", place, { at: place.at ?? null });
+      openLayer("review-scope", place, { at: place.at ?? null }, !b);
     } })(more.on_hover(glow(view, "details-review-more"))), 8));
   return v_flex().id("details-review-section").p(8).when(rule, el => el.border_t(1).border_color(t.border))
     .child(reason ? tip(view, t, "details-review-row", reason, row, { below: true }) : row);
@@ -83,7 +84,7 @@ export function initRangeMenu(view, cx) {
       view.root = root;
       const shown = reviewShown(source.space);
       if (shown?.root === root) { view.page = shown.page; view.base = shown.base || shown.page; }
-      openScope(view, cx);
+      openScope(view, cx, propsLit());
     }
     cx.notify();
   });
@@ -100,7 +101,7 @@ function openCommits(view, lit, cx) {
   const p = props(), i = scopeRows(view).findIndex(r => r.sub);
   const count = scopeList(view).length, h = 8 + 43 + (count ? Math.min(count * MENU_ROW, COMMITS_LIST) : 36);
   openBeside(view, i, "commits", { top: 4 + i * MENU_ROW + 9, width: underRow(null, 0).width - 8 },
-    { mod: "t3-actions", width: COMMITS_W, height: h, props: { lit, actions: "review-commits", source: p.source, details: p.details } }, "review-commits");
+    { mod: "t3-actions", width: COMMITS_W, height: h, props: { actions: "review-commits", source: p.source, details: p.details } }, "review-commits", lit >= 0);
   cx.notify();
 }
 
@@ -126,7 +127,7 @@ export function initCommits(view, cx) {
   const range = /** @type {any} */ (globalThis).t3DetailsRange;
   if (!range) return closeOverlay(props().overlay);
   for (const k of ["space", "root", "page", "base", "scopeGit", "picks", "refs", "scopeRoot", "scopeBase", "pick"]) view[k] = range[k];
-  view.scopeListAt = props().lit ?? -1;
+  view.scopeListAt = propsLit();
   view.scopeSearch = InputState.new({ placeholder: "Search commits" });
   view.scopeSearch.on("change", (_e, cx) => { view.scopeListAt = 0; view.scrollTop = { ...view.scrollTop, "scope-list": 0 }; cx.notify(); });
   view.scopeSearch.on("submit", (_e, cx) => pickListed(view, scopeList(view)[view.scopeListAt], cx));
