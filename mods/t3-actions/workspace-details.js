@@ -75,11 +75,11 @@ export function toggleDetails(bounds) {
   const tab = sp.tabs.find(t => t.active)?.id, f = terminalFor(sp.id, tab) ?? panes().find(p => p.tab === tab && p.terminal);
   const source = { space: sp.id, tab, pane: f?.pane, terminal: f?.terminal, machine: sp.machine, folder: workFolder(sp.id, tab) };
   const z = Number(settings().zoom) || 1;
-  // Keys have no press to hang it under: the button's place, from the header's measured blocks (t3-tabs' end, t3-chrome's panel).
+  // Keys have no press to hang it under: the button's place, from the header's measured blocks (t3-tabs' window part, t3-chrome's panel).
   const measured = /** @type {any} */ (globalThis).t3Titlebar, viewport = globalThis.window?.viewport_size?.();
   if (!bounds && viewport) {
-    // Its right edge: the work column's end (the panel and its 8 each side, while open), less the layout's 12 and t3-tabs' end.
-    const right = viewport.width - (measured?.end ?? 28 * z) - 12 * z - (panelState().open ? (measured?.panel ?? 480 * z) + 16 * z : 0);
+    // Its right edge: the work column's end (the panel, its 8 each side and the root's 1 divider, while open), less the layout's 12 and the window part (the closed panel's toggle, the window's buttons).
+    const right = viewport.width - (measured?.end ?? 0) - 12 * z - (panelState().open ? (measured?.panel ?? 480 * z) + 17 * z : 0);
     bounds = { x: right - 28 * z, y: 6 * z, width: 28 * z, height: 28 * z };
   }
   reg().id = openOverlay({ mod: "t3-actions", kind: "popup", frame: "none", width: CARD_W, height: CARD_MAX,
