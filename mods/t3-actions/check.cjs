@@ -47,7 +47,7 @@ const env = {
   focused: () => ({ tab: "b", cwd: "/repo" }), panes: () => [], spaces: () => [{ active: true, folder: "/space" }], layout: () => ({}),
   nextCommand: () => commands.length ? Promise.resolve(commands.shift()) : new Promise(() => {}),
 };
-const source = ["button.js", "store.js", "tip.js", "measured-text.js", "focus.js", "trigger.js", "list.js", "menu-row.js", "open-in.js", "terminal-context.js", "surfaces.js", "panel.js", "submenu.js", "review-git.js", "review-menu.js", "review-scope.js", "workspace-details.js", "review-details.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n").replace("const DISABLED = 0.64;", "const DISABLED = 0.64;\nconst drawButton = button;")
+const source = ["button.js", "store.js", "tip.js", "measured-text.js", "focus.js", "trigger.js", "list.js", "menu-row.js", "open-in.js", "terminal-context.js", "surfaces.js", "panel.js", "submenu.js", "popup-menu.js", "titlebar.js", "review-git.js", "review-menu.js", "review-scope.js", "details-popup.js", "actions.js", "workspace-details.js", "review-details.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n").replace("const DISABLED = 0.64;", "const DISABLED = 0.64;\nconst drawButton = button;")
   .replace(/^import .*;\r?\n/gm, "").replace("export default class", "globalThis.Mod = class").replace(/^export (?=(?:async\s+)?function\b|const\b|class\b)/gm, "");
 const cx = { notify() {}, stop_propagation() {}, spawn: (fn) => jobs.push(fn), focus_handle: () => ({ focus() {} }), timer: { every: () => ({ cancel() {} }), after: (_ms, f) => (f(cx), { cancel() {} }) } };
 const load = (props = {}) => {
@@ -381,7 +381,7 @@ delete state["t3-tabs.compact"];
   const open = async (shown) => {
     state["review.shown"] = shown;
     jobs.length = 0;
-    const range = load({ actions: "review-scope", source, details: "parent", overlay: "quick", at: { x: 600, y: 220 } });
+    const range = load({ actions: "review-scope", source, details: "parent", parents: ["parent"], overlay: "quick", at: { x: 600, y: 220 } });
     await jobs.shift()(cx);
     Object.assign(range, { scopeGit: { root: "/repo", branch: "feature", base: "main", baseRef: "main", unmerged: 2, changed: 0 },
       picks: { commits: [{ sha: "abc123", subject: "fix: focused review", time: 1 }], unpushed: [] }, refs: [], scopeRoot: "/repo", scopeBase: null });

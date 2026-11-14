@@ -49,7 +49,7 @@ export function targetIcon(mod, name, t, size = 16) {
 }
 
 // At most this tall, so twenty editors scroll and the keys' row stays in view (list.js scrollList).
-export const OPEN_IN_MAX = 420;
+const OPEN_IN_MAX = 420;
 /** The popup's height for `names` (a row saying why when there are none). */
 export const openInHeight = (names) => Math.min(OPEN_IN_MAX, 8 + Math.max(1, names.length) * MENU_ROW);
 

@@ -13,7 +13,7 @@ const widthChanged = (view, key, id) => (size, cx) => {
   cx.notify();
 };
 
-export function measureText(view, id, label, { size = 12, weight = "normal" } = {}) {
+function measureText(view, id, label, { size = 12, weight = "normal" } = {}) {
   return textStyle(div().id(`text-measure-${id}`).absolute().top(0).left(0).h(0).overflow_hidden().whitespace_nowrap(), size, weight)
     .child(label).on_size_change(widthChanged(view, "nameW", id));
 }
