@@ -12,7 +12,7 @@ import { KEY } from "./store.js";
 import { button, radiusOf, split, cardRow } from "./button.js";
 import { opener, popupOpen, hang } from "./trigger.js";
 import { closeChain, hasOpen } from "./popup-menu.js";
-import { sourceOkay, openLayer, underRow, splitHot, CHEVRON, MENU_CLOSED } from "./details-popup.js";
+import { sourceOkay, openLayer, rowMenu, focusSource, splitHot, CHEVRON, MENU_CLOSED } from "./details-popup.js";
 
 export const MOD = "t3-actions";
 export const ICONS = ["play", "test", "lint", "configure", "build", "debug"];
@@ -36,8 +36,7 @@ const underBar = (b) => hang(b, MENU_W, { gap: 5, nudge: 1 });
 export function runAction(a) {
   const source = props()?.source;
   if (!sourceOkay(source)) { closeChain(); return; }
-  if (source?.terminal) run("pane.focus", { terminal: source.terminal });
-  else if (source?.pane) run("pane.focus", { pane: source.pane });
+  focusSource(source);
   setShared(KEY.actions, { ...state(), last: a.id });
   // A mod pane (a review beside its agent) has no folder: use a terminal's in the same tab, else the space's.
   const f = focused();
@@ -47,29 +46,26 @@ export function runAction(a) {
   run("terminal.open", { argv: ["sh", "-c", a.command], name: a.name, place: a.place ?? "tab", ...(folder ? { folder } : {}) });
 }
 
-// Not shared/button.js: one outline round two halves is T3's ButtonGroup (docs/internals/t3-tokens.md).
-// The bar's control: "▶ Dev | ▾", or "Add action" before there is one. Outlined, not filled: a fill would read as an active tab.
+// The bar's control: "▶ Dev | ⌄", shared/button.js's xs split (T3's ProjectScriptsControl in its header), or "Add action"
+// before there is one. Outlined, not filled: a fill would read as an active tab.
 export function barControl(view, t, stopPress = (_e, cx) => cx.stop_propagation()) {
   // A narrow bar's layout sets it (Herdr T3's bar-measure): the icon alone, the name left to the hover label. Unset, the full control.
   const s = state(), main = primary(s), compact = shared(KEY.compact), menuOn = popupOpen(view, "action-more", MENU_CLOSED);
   // T3's xs outline button: its svg hangs 2px into each side, its label sits 4 on, and with the icon alone it's 24 square.
   const ends = (el, wide) => wide ? el.pl(5).pr(7).gap(4) : el.justify_center();
-  const box = (id) => h_flex().id(id).h(24).flex_none().items_center().rounded(8).border(1).border_color(t.border).text_size(12).on_mouse_down("left", stopPress);
+  const box = (id) => h_flex().id(id).h(24).flex_none().items_center().rounded(8).border(1).border_color(t.input).text_size(12).on_mouse_down("left", stopPress);
   if (!main) return measuredTooltip(view, t, "action-add", "Add action", stop(view, t, "action-add", ends(box("action-add"), !compact).when(Boolean(compact), el => el.w(24)).text_color(lit(view, "action-add")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-add"))
     // The dialog covers it, before the pointer can report leaving it.
     .role("button").accessibility_label("Add action").on_click((_e, cx) => { view.hot = null; editor(null); cx.notify(); })
     .child(svg("mods/t3-actions/icons/plus.svg").size(14)).when(!compact, el => el.child("Add action")), 8), { shown: !compact, below: true });
-  return box("actions").text_color(t.dim)
-    // 22, the outline's inside: a hover card's wrapper has no height for h_full to fill.
-    .child(measuredTooltip(view, t, "action-run", `Run ${main.name}`, stop(view, t, "action-run", ends(h_flex().id("action-run").h(22).items_center().rounded_l(8), !compact).when(Boolean(compact), el => el.w(23)).text_color(lit(view, "action-run")).hover(st => st.bg(t.hover)).on_hover(glow(view, "action-run"))
-      .role("button").accessibility_label(`Run ${main.name}`).on_click(() => runAction(main))
-      .child(icon(main.icon).size(14)).when(!compact, el => el.child(nameText(view, "action-run", main.name).max_w(140))), 8), { shown: !compact, below: true }))
-    .child(div().w(1).h(22).flex_none().bg(t.border))
-    .child(stop(view, t, "action-more", opener(view, { id: "action-more", closed: MENU_CLOSED, onOpen: (b) => openOverlay({ mod: MOD, kind: "popup", ...underBar(b), width: MENU_W, height: Math.min(MENU_MAX, MENU_REST + s.list.length * 28), props: { actions: "menu", source: props()?.source, details: null, ...litProp(!b) } }) })(
-      div().id("action-more").h(22).w(23).flex().items_center().justify_center().rounded_r(8).text_color(menuOn ? t.foreground : lit(view, "action-more"))
-        .when(menuOn, el => el.bg(t.selected)).when(!menuOn, el => el.hover(st => st.bg(t.hover))).on_hover(glow(view, "action-more"))
-        .role("button").accessibility_label("Actions"))
-      .child(svg("mods/t3-actions/icons/chevron-down.svg").size(16)), 8));
+  return split(t, { id: "actions", mainId: "action-run", moreId: "action-more", chevron: "mods/t3-actions/icons/chevron-down.svg", size: "xs", surface: "chrome",
+    wide: !compact, hot: splitHot(view, "action-run", "action-more"), on: menuOn, label: `Run ${main.name}`, moreLabel: "Actions" },
+    run => measuredTooltip(view, t, "action-run", `Run ${main.name}`, stop(view, t, "action-run", run.text_color(lit(view, "action-run")).on_hover(glow(view, "action-run"))
+      .on_click(() => runAction(main))
+      .child(icon(main.icon).size(14)).when(!compact, el => el.child(nameText(view, "action-run", main.name).max_w(140))), 8), { shown: !compact, below: true }),
+    more => stop(view, t, "action-more", opener(view, { id: "action-more", closed: MENU_CLOSED, onOpen: (b) => openOverlay({ mod: MOD, kind: "popup", ...underBar(b), width: MENU_W, height: Math.min(MENU_MAX, MENU_REST + s.list.length * 28), props: { actions: "menu", source: props()?.source, details: null, ...litProp(!b) } }) })(
+      more.on_hover(glow(view, "action-more"))), 8))
+    .text_size(12).text_color(t.dim).on_mouse_down("left", stopPress);
 }
 
 /** Details' Actions row: a split, ▶ the action and ⌄ its menu, hung under the row. */
@@ -82,7 +78,7 @@ export function detailsControl(view, t) {
     // Its whole name in a tooltip only when it's cut (measured-text.js), on the half, whose hover it is.
     run => measuredTooltip(view, t, "action-run", main.name, stop(view, t, "action-run", run.on_hover(glow(view, "action-run")).on_click(() => runAction(main))
       .child(icon(main.icon).size(16).flex_none().text_color(t.dim)).child(nameText(view, "action-run", main.name, { size: 13, weight: "medium" }).flex_1().whitespace_nowrap()), 8), { below: true }),
-    more => stop(view, t, "action-more", opener(view, { closed: MENU_CLOSED, onOpen: (b) => openLayer("menu", underRow(b, Math.min(MENU_MAX, 36 + s.list.length * 28)), {}, !b) })(more.on_hover(glow(view, "action-more"))), 8));
+    more => stop(view, t, "action-more", rowMenu(view, "action-more", Math.min(MENU_MAX, 36 + s.list.length * 28), (place, keys) => openLayer("menu", place, {}, keys))(more.on_hover(glow(view, "action-more"))), 8));
 }
 
 // The menu takes the keyboard, as the shipped menu does. As T3's, nothing is lit until a key or the pointer gets there.

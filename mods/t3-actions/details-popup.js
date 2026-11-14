@@ -1,10 +1,11 @@
 // Details' popup (cmd-shift-b): opening and closing it, the source it was opened on, and the menus that hang off it
-// (popup-menu.js), each under its row (underRow). What it draws is workspace-details.js's; its Actions row actions.js's,
-// its Quick Review review-details.js's.
-import { spaces, panes, props, settings, openOverlay, closeOverlay, setShared } from "herdr";
-import { within } from "./focus.js";
-import { hang } from "./trigger.js";
-import { openPopup, menuClosed } from "./popup-menu.js";
+// (popup-menu.js), each under its row (underRow, rowMenu). What it draws is workspace-details.js's; its Actions row actions.js's,
+// its Review row review-details.js's.
+import { spaces, panes, props, settings, openOverlay, closeOverlay, setShared, run, focused } from "herdr";
+import { within, focusStop } from "./focus.js";
+import { hang, opener } from "./trigger.js";
+import { openPopup, menuClosed, backTo } from "./popup-menu.js";
+import { litProp } from "./list.js";
 import { terminalFor, workFolder } from "./terminal-context.js";
 import { closedKey } from "./store.js";
 import { panelState } from "./panel.js";
@@ -35,6 +36,29 @@ export function layerClosed(id) {
   if (reg().id === id) { reg().id = null; setShared(DETAILS_CLOSED, Date.now()); }
 }
 
+/** A row's chevron `id` that opens its menu, `height` tall, under the row: `open(place, keys)` opens it (openLayer) and returns
+ *  its id, or false. Opened by keys (no press), it's placed from where Details hangs (props.at) and the row's top in the card
+ *  (view.grid, workspace-details.js detailsGrid); as it closes the keyboard comes back here, ringed if keys opened it, unless
+ *  the terminal changed meanwhile (an action ran beside it). */
+export const rowMenu = (view, id, height, open) => opener(view, { closed: MENU_CLOSED, onOpen: (b) => {
+  const menu = open(underRow(b ?? keyRow(view, id), height), !b);
+  if (menu === false) return false;
+  const was = focused()?.terminal;
+  backTo(menu, () => { if (focused()?.terminal === was) b ? view.detailsKeys.focus() : focusStop(view, id); });
+} });
+
+// Row `id`'s bounds as a press would give them, zoomed px: inside the card's 1 border and 8 padding, as wide as a row.
+function keyRow(view, id) {
+  const at = props().at, row = view.grid?.find(r => r.ids.includes(id)), z = Number(settings().zoom) || 1;
+  return at && row ? { x: at.x + 9 * z, y: at.y + row.top * z, width: ROW_W * z, height: 32 * z } : null;
+}
+
+/** The keyboard back on the terminal Details opened on: Escape, an action run. */
+export function focusSource(s) {
+  if (s?.terminal) run("pane.focus", { terminal: s.terminal });
+  else if (s?.pane) run("pane.focus", { pane: s.pane });
+}
+
 export function dismissDetails() { if (reg().id) closeOverlay(reg().id); reg().id = null; }
 
 /** The space, tab and terminal Details opened on are still the ones shown. */
@@ -53,10 +77,12 @@ export function toggleDetails(bounds) {
   const source = { space: sp.id, tab, pane: f?.pane, terminal: f?.terminal, machine: sp.machine, folder: workFolder(sp.id, tab) };
   // Keys have no press to hang it under: the button's place, from what the header measured (titlebar.js).
   const viewport = globalThis.window?.viewport_size?.();
+  // No press: keys opened it, so its first control takes the keyboard (list.js litProp). `at`: where it hangs, for its rows' menus.
+  const keys = !bounds;
   if (!bounds && viewport) bounds = detailsAnchor(viewport, Number(settings().zoom) || 1, panelState().open);
-  reg().id = openOverlay({ mod: "t3-actions", kind: "popup", frame: "none", width: CARD_W, height: CARD_MAX,
-    ...hang(bounds, CARD_W),
-    props: { actions: "details", source } });
+  const place = hang(bounds, CARD_W);
+  reg().id = openOverlay({ mod: "t3-actions", kind: "popup", frame: "none", width: CARD_W, height: CARD_MAX, ...place,
+    props: { actions: "details", source, at: place.at ?? null, ...litProp(keys) } });
 }
 
 // The half of a split under the pointer or the keyboard (T3's group-focus-within), for split()'s `hot`.

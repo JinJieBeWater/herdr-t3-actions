@@ -1,5 +1,5 @@
 // Popup menus that hang off one another, as T3's MenuSub: t3-menu's Snooze, Files' folders as deep as they go, Details' menus
-// and Quick Review's Commits. Which popup hangs off which is kept for this run only, in one registry: mods share one JS context
+// and the Commits of Details' Review row. Which popup hangs off which is kept for this run only, in one registry: mods share one JS context
 // (terminal-context.js), so every copy reads the same. A submenu is a popup of its own beside its row (submenu.js places it).
 // scripts/sync.sh copies this to the mods that use it.
 import { openOverlay, closeOverlay, props, settings, shared } from "herdr";
@@ -18,6 +18,9 @@ export function openPopup(spec, parent = null, kind = null, keys = false) {
   popups().set(id, { mod: spec.mod, parent, kind });
   return id;
 }
+
+/** What gives the keyboard back as popup `id` closes on its own (menuClosed): `back`, from the view that opened it. */
+export const backTo = (id, back) => { const m = popups().get(id); if (m) m.back = back; };
 
 /** Whether popup `id` is still open. */
 export const isOpen = (id) => popups().has(id);
@@ -63,7 +66,7 @@ export function openBeside(view, i, key, row, spec, kind = null, keys = false) {
   // Herdr keeps a popup in the window, but doesn't flip it: subPlace does, in the menu's own px, narrowed to the room it has.
   const at = subPlace({ x: b.x / z, y: b.y / z, width: b.width / z, height: b.height / z }, spec.width, 0, (/** @type {any} */ (globalThis).window?.viewport_size?.().width ?? 1e6) / z);
   const id = openPopup({ ...spec, width: at.width, at: { x: at.x * z, y: at.y * z }, props: { ...spec.props, parents: [...(p.parents ?? []), p.overlay] } }, p.overlay, kind, keys);
-  popups().get(id).back = () => view.keys.focus();
+  backTo(id, () => view.keys.focus());
   view.sub = { id, row: i };
   subOpened(view.s, key, { x: at.x * z, y: at.y * z, width: at.width * z, height: spec.height * z }, at.side);
   return id;

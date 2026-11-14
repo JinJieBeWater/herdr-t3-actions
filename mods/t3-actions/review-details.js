@@ -1,11 +1,10 @@
-// Details' Quick Review: a split row. Its main half shows Review (the range it's on, or its default); its chevron opens the
+// Details' Review row: a split row. Its main half shows Review (the range it's on, or its default); its chevron opens the
 // range menu, a popup under the row, whose Commits opens beside it in another (submenu.js), as t3-menu's Snooze. The rows,
 // reads and picks are Review's own (review-scope.js); a pick shows Review and asks it for that range (panel.js reviewRequest).
 import { div, svg } from "gpui-kit";
 import { v_flex, InputState } from "gpui-base";
 import { props, closeOverlay, theme } from "herdr";
 import { stop, focusRoot } from "./focus.js";
-import { opener } from "./trigger.js";
 import { glow, tip } from "./tip.js";
 import { nameText, measuredTooltip } from "./measured-text.js";
 import { split } from "./button.js";
@@ -15,7 +14,7 @@ import { propsLit } from "./list.js";
 import { hoverRow, subLeft } from "./submenu.js";
 import { openBeside, closeSub, subGone, closeChain, hasOpen } from "./popup-menu.js";
 import { scopeOf, openScope, scopeRows, scopeRow, scopeItems, scopeList, pickListed, menuKey, commitsKey, commitsBody, releaseScope } from "./review-scope.js";
-import { sourceOkay, openLayer, underRow, splitHot, CHEVRON, MENU_CLOSED } from "./details-popup.js";
+import { sourceOkay, openLayer, underRow, rowMenu, splitHot, CHEVRON, MENU_CLOSED } from "./details-popup.js";
 
 const ICON_DIR = "mods/t3-actions/icons";
 // The range menu at its tallest: four ranges, the rule, Commits, its padding. The app fits a popup to what it draws.
@@ -26,29 +25,26 @@ const COMMITS_W = 320, COMMITS_LIST = 320;
 
 function reviewReason(source) {
   return source.machine ? "Review is unavailable on remote spaces." : !source.folder ? "No working directory."
-    : !panelState().pages.includes("review") ? "Install the Review extra to use Quick Review." : "";
+    : !panelState().pages.includes("review") ? "Install the Review extra to use it." : "";
 }
 
-/** Quick Review's section, under Workspace's rule when that shows (`rule`). */
+/** The Review row's section, under Workspace's rule when that shows (`rule`). */
 export function reviewDetailsView(view, t, visible, rule) {
   if (visible.review === false) return null;
   const source = props().source, reason = reviewReason(source), on = hasOpen(props().overlay, "review-scope");
   // The range as Review's scope button names it; nothing while no Review tab shows one.
   const shown = !reason && reviewShown(source.space), label = shown?.page ? shown.label ?? scopeOf({ page: shown.page }).label : "";
   const row = split(t, { id: "details-review-row", mainId: "details-review", moreId: "details-review-more", chevron: CHEVRON, size: "row",
-    hot: splitHot(view, "details-review", "details-review-more"), on, disabled: Boolean(reason), label: label ? `Quick Review: ${label}` : "Quick Review", moreLabel: "Choose review range" },
+    hot: splitHot(view, "details-review", "details-review-more"), on, disabled: Boolean(reason), label: label ? `Review: ${label}` : "Review", moreLabel: "Choose review range" },
     // The range's whole name in a tooltip only when it's cut, as the machine's (measured-text.js): on the half, whose hover it is.
     main => measuredTooltip(view, t, "details-review", label, stop(view, t, "details-review", main.on_hover(glow(view, "details-review"))
       .when(!reason, el => el.on_click(() => { if (sourceOkay(source)) showPage("review"); }))
       .child(svg(`${ICON_DIR}/pulls-review.svg`).size(16).flex_none())
-      .child(div().flex_1().min_w(0).truncate().child("Quick Review"))
+      .child(div().flex_1().min_w(0).truncate().child("Review"))
       .when(Boolean(label), el => el.child(div().id("details-review-scope-slot").flex_none().max_w(120).min_w(0).font_normal()
         .child(nameText(view, "details-review", label, { size: 12 }).text_color(t.dim).whitespace_nowrap()))), 8), { below: true }),
-    more => stop(view, t, "details-review-more", reason ? more : opener(view, { closed: MENU_CLOSED, onOpen: (b) => {
-      if (!sourceOkay(source)) return false;
-      const place = underRow(b, RANGE_H);
-      openLayer("review-scope", place, { at: place.at ?? null }, !b);
-    } })(more.on_hover(glow(view, "details-review-more"))), 8));
+    more => stop(view, t, "details-review-more", reason ? more : rowMenu(view, "details-review-more", RANGE_H,
+      (place, keys) => sourceOkay(source) && openLayer("review-scope", place, { at: place.at ?? null }, keys))(more.on_hover(glow(view, "details-review-more"))), 8));
   return v_flex().id("details-review-section").p(8).when(rule, el => el.border_t(1).border_color(t.border))
     .child(reason ? tip(view, t, "details-review-row", reason, row, { below: true }) : row);
 }

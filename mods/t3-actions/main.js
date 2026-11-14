@@ -153,7 +153,7 @@ export default class Actions extends View {
   close() {
     stopsEnd(this);
     if (props()?.actions === "review-scope") closeRangeMenu(this);
-    // Every menu, and every layer Details opens (Quick Review's too): a press on its button that closed it mustn't reopen it.
+    // Every menu, and every layer Details opens (the Review row's too): a press on its button that closed it mustn't reopen it.
     if (/** @type {any} */ (this).keys || props()?.details) setShared(MENU_CLOSED, Date.now());
     // Its own menus go with it; Details, its button shows it gone.
     if (props()?.overlay) layerClosed(props().overlay);
