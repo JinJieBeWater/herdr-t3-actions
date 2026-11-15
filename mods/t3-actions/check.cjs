@@ -47,7 +47,7 @@ const env = {
   focused: () => ({ tab: "b", cwd: "/repo" }), panes: () => [], spaces: () => [{ active: true, folder: "/space" }], layout: () => ({}),
   nextCommand: () => commands.length ? Promise.resolve(commands.shift()) : new Promise(() => {}),
 };
-const source = ["button.js", "store.js", "tip.js", "measured-text.js", "focus.js", "trigger.js", "list.js", "menu-row.js", "open-in.js", "terminal-context.js", "surfaces.js", "panel.js", "submenu.js", "popup-menu.js", "titlebar.js", "review-git.js", "review-menu.js", "review-scope.js", "details-popup.js", "actions.js", "workspace-details.js", "review-details.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n").replace("const DISABLED = 0.64;", "const DISABLED = 0.64;\nconst drawButton = button;")
+const source = ["color.js", "button.js", "store.js", "tip.js", "measured-text.js", "focus.js", "trigger.js", "list.js", "menu-row.js", "open-in.js", "terminal-context.js", "surfaces.js", "panel.js", "submenu.js", "popup-menu.js", "titlebar.js", "review-git.js", "review-menu.js", "review-scope.js", "details-popup.js", "actions.js", "workspace-details.js", "review-details.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n").replace("const DISABLED = 0.64;", "const DISABLED = 0.64;\nconst drawButton = button;")
   .replace(/^import .*;\r?\n/gm, "").replace("export default class", "globalThis.Mod = class").replace(/^export (?=(?:async\s+)?function\b|const\b|class\b)/gm, "");
 // The handle holding the keyboard.
 let held = null;
@@ -524,6 +524,42 @@ delete state["t3-tabs.compact"];
   fire(find(mv.render(), "workspace-details"), "on_key_down", { key: "down", keystroke: "down", modifiers: {} }, cx);
   assert.equal(mv.testScope.onStop(mv), "details-finder");
   delete state["t3-actions.menuClosed"];
+}
+{
+  // Open in's menu opened while the editors are still being looked for: once they're found, the open menu lists them too,
+  // as Details' row does (open-in.js targetsMenu reads what the probe found, not what it was opened with).
+  const source = { space: "s", tab: "b", pane: "p", terminal: "t", folder: "/captured" };
+  const was = { spaces: env.spaces, panes: env.panes, focused: env.focused, layout: env.layout, exec: env.exec };
+  env.spaces = () => [{ id: "s", active: true, tabs: [{ id: "b", active: true }] }];
+  env.panes = () => [{ pane: "p", terminal: "t", tab: "b" }];
+  env.focused = () => ({ pane: "p", terminal: "t", tab: "b" });
+  env.layout = () => ({ id: "root", children: [{ id: "panel-body", children: [{ id: "review" }] }] });
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  env.exec = async (_cmd, args) => {
+    if (args[0] === "-Ra") { await gate; return { code: args[1] === "Zed" ? 0 : 1, stdout: "", stderr: "" }; }
+    return { code: 0, stdout: "Test Mac", stderr: "" };
+  };
+  jobs.length = 0;
+  const details = load({ actions: "details", source, overlay: "details" });
+  const running = jobs.splice(0).map((job) => job(cx));
+  const arrow = () => find(details.render(), "details-open-more");
+  fire(arrow(), "on_mouse_down:left", { bounds: { x: 300, y: 100, width: 32, height: 32 } }, cx);
+  fire(arrow(), "on_click", {}, cx);
+  const first = overlays.at(-1);
+  assert.deepEqual(plain(first.props.targets), ["Finder"], "opened while the probe runs");
+  const picker = load({ ...first.props, overlay: "picker" });
+  // Herdr runs a mod's popups in one runtime: the probe's cache is the same one.
+  picker.testScope.t3OpenInTargets = details.testScope.t3OpenInTargets;
+  const before = jobs.length; vm.runInContext("awaitTargets", picker.testScope)(cx);
+  assert.equal(jobs.length, before + 1, "the menu waits for the probe, to draw again when it ends");
+  jobs.pop();
+  const labels = () => ["open-in-0", "open-in-1", "open-in-2"].map((id) => find(picker.render(), id)).filter(Boolean).map((row) => row.style.accessibility_label);
+  assert.deepEqual(plain(labels()), ["Open in Finder"]);
+  release(); await Promise.all(running); await new Promise(setImmediate);
+  assert.deepEqual(plain(details.targets), ["Finder", "Zed"], "the probe found Zed");
+  assert.deepEqual(plain(labels()), ["Open in Finder", "Open in Zed"], "the open menu lists it too");
+  Object.assign(env, was); jobs.length = 0;
 }
 console.log("ok: Actions controls/editor; Details opens on its source, its menus under their rows and gone with it, walked by keys; its Review row shows Review and picks its range");
 })().catch((e) => { console.error(e); process.exit(1); });

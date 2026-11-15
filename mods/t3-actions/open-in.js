@@ -53,9 +53,16 @@ const OPEN_IN_MAX = 420;
 /** The popup's height for `names` (a row saying why when there are none). */
 export const openInHeight = (names) => Math.min(OPEN_IN_MAX, 8 + Math.max(1, names.length) * MENU_ROW);
 
+/** An Open in menu opened before the probe has finished: redrawn once it has, so it lists what it found (targetsMenu). */
+export function awaitTargets(cx) {
+  if (!knownTargets() && globalThis.t3OpenInTargets) cx.spawn(async (cx) => { await installedTargets(); cx.notify(); });
+}
+
 /** Open in's menu, Files' and Details': only picks the app (`choose(name, cx)`); the button beside it opens. No names: `reason`.
- *  `mod` the folder whose icons/ hold the apps'. `view.keys` takes the keyboard, `view.at` is the lit row. */
+ *  `names` are what its button knew as it opened; once the probe has found more (awaitTargets), those. `mod` the folder whose
+ *  icons/ hold the apps'. `view.keys` takes the keyboard, `view.at` is the lit row. */
 export function targetsMenu(view, mod, names, reason, choose) {
+  if (names.length) names = knownTargets() ?? names;
   const t = theme(), pick = (at, cx) => choose(names[at], cx);
   return focusRoot(view, v_flex().id("open-in-menu").size_full().p(4).bg(t.popover).track_focus(view.keys)
     .on_key_down(menuKeys(view, names, pick))

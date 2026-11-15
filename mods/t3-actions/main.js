@@ -13,6 +13,7 @@ import { toggleDetails, dismissDetails, layerClosed, openedDetails, MENU_CLOSED,
 import { initDetails, detailsView, openInMenu, directoryMenu, detailsItemsMenu } from "./workspace-details.js";
 import { initRangeMenu, rangeMenu, closeRangeMenu, initCommits, commitsMenu } from "./review-details.js";
 import { MOD, ICONS, icon, lit, state, barControl, initMenu, actionsMenu } from "./actions.js";
+import { awaitTargets } from "./open-in.js";
 
 const PLACES = [["tab", "Tab"], ["right", "Right"], ["down", "Down"]];
 
@@ -131,7 +132,7 @@ export default class Actions extends View {
     const overlay = props()?.actions;
     if (overlay === "edit") initEditor(this, cx);
     if (overlay === "menu") initMenu(this, cx);
-    if (overlay === "open-in") initMenu(this, cx);
+    if (overlay === "open-in") { initMenu(this, cx); awaitTargets(cx); }
     if (overlay === "directory-menu") initMenu(this, cx);
     if (overlay === "details-items") initMenu(this, cx);
     if (overlay === "confirm") initConfirm(this, cx);
