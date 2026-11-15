@@ -2,7 +2,7 @@
 // The app menu both open is drawn here too (targetsMenu), each in a popup of its own mod.
 import { image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { exec, theme } from "herdr";
+import { checking, exec, theme } from "herdr";
 import { focusRoot } from "./focus.js";
 import { menuKeys, scrollList } from "./list.js";
 import { menuRow, MENU_ROW } from "./menu-row.js";
@@ -12,6 +12,7 @@ const EDITORS = ["Cursor", "Trae", "Kiro", "Visual Studio Code", "Visual Studio 
   "IntelliJ IDEA", "Aqua", "CLion", "DataGrip", "DataSpell", "GoLand", "PhpStorm", "PyCharm", "Rider", "RubyMine", "RustRover", "WebStorm"];
 
 export function installedTargets() {
+  if (checking()) return Promise.resolve(["Finder"]);
   const cache = globalThis.t3OpenInTargets;
   if (cache?.version === 3) return cache.promise;
   const entry = { version: 3, names: null, promise: null };

@@ -3,7 +3,7 @@
 // reads and picks are Review's own (review-scope.js); a pick shows Review and asks it for that range (panel.js reviewRequest).
 import { div, svg } from "gpui-kit";
 import { v_flex, InputState } from "gpui-base";
-import { props, closeOverlay, theme } from "herdr";
+import { checking, props, closeOverlay, theme } from "herdr";
 import { stop, focusRoot } from "./focus.js";
 import { glow, tip } from "./tip.js";
 import { nameText, measuredTooltip } from "./measured-text.js";
@@ -93,8 +93,8 @@ export function initRangeMenu(view, cx) {
     view.page = shown?.root === root ? shown.page : null; view.base = shown?.root === root ? shown.base || shown.page : undefined;
     openScope(view, cx, propsLit());
   };
-  if (roots.has(source.space)) at(roots.get(source.space), cx);
-  cx.spawn(async (cx) => {
+  if (!checking() && roots.has(source.space)) at(roots.get(source.space), cx);
+  if (!checking()) cx.spawn(async (cx) => {
     const { root, problem } = await reviewRepo(source.space);
     if (view.closed) return;
     if (!root) { roots.delete(source.space); view.scopeError = problem; }

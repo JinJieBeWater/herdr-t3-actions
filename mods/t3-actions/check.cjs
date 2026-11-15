@@ -16,6 +16,7 @@ const theme = new Proxy({ foreground: "#f4f4f6", dim: "#77777f", border: "#2a2a3
 // Text fields, in the order the editor makes them.
 const fields = [];
 const env = {
+  checking: () => false,
   View: class {}, div: () => element(), h_flex: () => element("h"), v_flex: () => element("v"),
   svg: (source) => element("svg", source), image: source => element("image", source), Input: { new: () => element("input") }, Popup: { new: (id, trigger) => element("popup").id(id).child(trigger) },
   InputState: { new: ({ value = "" }) => { const f = { text: value, on() {}, value: () => f.text, set_value: value => { f.text = value; }, focus() {} }; fields.push(f); return f; } },

@@ -3,7 +3,7 @@
 // source: a menu acts on it after a last check, and goes with Details when it goes.
 import { div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { props, settings, closeOverlay, exec, notify, theme, window, shared, setShared } from "herdr";
+import { checking, props, settings, closeOverlay, exec, notify, theme, window, shared, setShared } from "herdr";
 import { stop, focusRoot, focusStop, onStop } from "./focus.js";
 import { hasOpen } from "./popup-menu.js";
 import { split, cardRow } from "./button.js";
@@ -60,7 +60,7 @@ export function initDetails(view, cx) {
   if (first) focusStop(view, first);
   const source = props().source;
   // The Review row's range menu reads as Details opens, so its first opening has its counts.
-  if (detailsVisibility().review !== false) prefetchRange(cx);
+  if (!checking() && detailsVisibility().review !== false) prefetchRange(cx);
   view.machineName = source.machine || "This Mac";
   view.targets = knownTargets() ?? ["Finder"];
   view.target = "Finder";
@@ -70,7 +70,7 @@ export function initDetails(view, cx) {
     if (shared(KEY.openTarget) && view.target === "Finder") setShared(KEY.openTarget, "Finder");
     cx.notify();
   });
-  if (!source.machine) cx.spawn(async (cx) => {
+  if (!checking() && !source.machine) cx.spawn(async (cx) => {
     const r = await exec("scutil", ["--get", "ComputerName"]).catch(() => null);
     if (r?.code === 0) view.machineName = r.stdout.trim();
     cx.notify();
