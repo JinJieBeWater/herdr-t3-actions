@@ -13,7 +13,7 @@ import { MENU_ROW } from "./menu-row.js";
 import { propsLit } from "./list.js";
 import { hoverRow, subLeft } from "./submenu.js";
 import { openBeside, closeSub, subGone, closeChain, hasOpen } from "./popup-menu.js";
-import { scopeOf, openScope, scopeRows, scopeRow, scopeItems, scopeList, pickListed, menuKey, commitsKey, commitsBody, releaseScope } from "./review-scope.js";
+import { scopeOf, openScope, readScope, scopeRows, scopeRow, scopeItems, scopeList, pickListed, menuKey, commitsKey, commitsBody, releaseScope } from "./review-scope.js";
 import { sourceOkay, openLayer, underRow, rowMenu, splitHot, CHEVRON, MENU_CLOSED } from "./details-popup.js";
 
 const ICON_DIR = "mods/t3-actions/icons";
@@ -21,6 +21,8 @@ const ICON_DIR = "mods/t3-actions/icons";
 const RANGE_H = 8 + 4 * MENU_ROW + 9 + MENU_ROW;
 // The Commits submenu: T3's w-80; its list 320 tall at most, under its search (43) and padding.
 const COMMITS_W = 320, COMMITS_LIST = 320;
+// Where each space's Review read last (panel.js reviewRepo), for this mod's run: the menu reads there at once and checks it after.
+const roots = new Map();
 
 
 function reviewReason(source) {
@@ -59,7 +61,20 @@ function pickInDetails(view, source) {
   };
 }
 
-/** The range menu: Review's rows (none lit, the range Review shows checked), read once on opening. */
+/** Details opening: where Review reads and its counts, read now, so the range menu has them when it opens (review-scope.js
+ *  keeps them). Only this space, and only when the Review row can open it. */
+export function prefetchRange(cx) {
+  const source = props().source;
+  if (reviewReason(source)) return;
+  cx.spawn(async (cx) => {
+    const { root } = await reviewRepo(source.space);
+    if (!root) return;
+    roots.set(source.space, root);
+    readScope({ space: source.space, root }, cx);
+  });
+}
+
+/** The range menu: Review's rows (none lit, the range Review shows checked), read on opening; the last read meanwhile. */
 export function initRangeMenu(view, cx) {
   const p = props(), source = p.source;
   // menuKey's Escape (review-scope.js) is this popup's close.
@@ -72,16 +87,18 @@ export function initRangeMenu(view, cx) {
   view.pick = pickInDetails(view, source);
   view.openCommits = (cx, lit) => openCommits(view, lit, cx);
   view.scopeSearch = InputState.new({ placeholder: "Search" });
+  const at = (root, cx) => {
+    view.root = root; roots.set(source.space, root);
+    const shown = reviewShown(source.space);
+    view.page = shown?.root === root ? shown.page : null; view.base = shown?.root === root ? shown.base || shown.page : undefined;
+    openScope(view, cx, propsLit());
+  };
+  if (roots.has(source.space)) at(roots.get(source.space), cx);
   cx.spawn(async (cx) => {
     const { root, problem } = await reviewRepo(source.space);
     if (view.closed) return;
-    if (!root) view.scopeError = problem;
-    else {
-      view.root = root;
-      const shown = reviewShown(source.space);
-      if (shown?.root === root) { view.page = shown.page; view.base = shown.base || shown.page; }
-      openScope(view, cx, propsLit());
-    }
+    if (!root) { roots.delete(source.space); view.scopeError = problem; }
+    else if (root !== view.root) at(root, cx);
     cx.notify();
   });
   /** @type {any} */ (globalThis).t3DetailsRange = view;
@@ -105,7 +122,7 @@ export function rangeMenu(view) {
   const t = theme();
   // Its Commits closed itself (← or Esc in it, a click beside it): the keyboard comes back here.
   subGone(view, MENU_CLOSED);
-  const rows = scopeRows(view), loading = !view.scopeError && view.scopeGit === undefined;
+  const rows = scopeRows(view);
   const row = (r, i) => scopeRow(view, t, r, i, { icons: ICON_DIR, open: Boolean(r.sub) && Boolean(view.sub),
     also: (el) => el.on_mouse_move((e, cx) => {
       view.rowsAt[i] = e.bounds;
@@ -113,9 +130,9 @@ export function rangeMenu(view) {
     }) });
   return focusRoot(view, v_flex().id("details-range-menu").w_full().p(4).bg(t.popover).text_size(14).track_focus(view.keys)
     .on_hover((on) => { if (!on) subLeft(view.s); })
-    .on_key_down((e, cx) => { if (!loading && !view.scopeError) menuKey(view, e, cx); else if (e.key === "escape") view.closePopup(); })
-    .when(Boolean(view.scopeError || loading), el => el.child(div().id("details-range-note").min_h(28).px(8).flex().items_center().text_color(t.dim).child(view.scopeError || "Reading review ranges…")))
-    .when(!view.scopeError && !loading, el => el.children(scopeItems(t, rows, row))));
+    .on_key_down((e, cx) => { if (!view.scopeError) menuKey(view, e, cx); else if (e.key === "escape") view.closePopup(); })
+    .when(Boolean(view.scopeError), el => el.child(div().id("details-range-note").min_h(28).px(8).flex().items_center().text_color(t.dim).child(view.scopeError)))
+    .when(!view.scopeError, el => el.children(scopeItems(t, rows, row))));
 }
 
 /** Commits beside the range menu: what the menu read, its search, its rows. */

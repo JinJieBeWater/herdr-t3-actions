@@ -10,7 +10,7 @@ import { split, cardRow } from "./button.js";
 import { KEY } from "./store.js";
 import { MENU_CLOSED, CHEVRON, CARD_MAX, sourceOkay, openLayer, rowMenu, focusSource, splitHot } from "./details-popup.js";
 import { detailsControl, state } from "./actions.js";
-import { reviewDetailsView } from "./review-details.js";
+import { reviewDetailsView, prefetchRange } from "./review-details.js";
 import { menuKeys, propsLit } from "./list.js";
 import { menuRow, menuRule, MENU_ROW } from "./menu-row.js";
 import { installedTargets, knownTargets, openTarget, targetIcon, targetsMenu, openInHeight } from "./open-in.js";
@@ -59,6 +59,8 @@ export function initDetails(view, cx) {
   const first = propsLit() >= 0 && detailsGrid()[0]?.ids[0];
   if (first) focusStop(view, first);
   const source = props().source;
+  // The Review row's range menu reads as Details opens, so its first opening has its counts.
+  if (detailsVisibility().review !== false) prefetchRange(cx);
   view.machineName = source.machine || "This Mac";
   view.targets = knownTargets() ?? ["Finder"];
   view.target = "Finder";

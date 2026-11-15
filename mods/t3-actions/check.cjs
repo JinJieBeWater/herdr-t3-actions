@@ -397,7 +397,41 @@ delete state["t3-tabs.compact"];
     return range;
   };
   const label = (range, id) => find(range.render(), id).style.accessibility_label;
+  // Nothing read yet: Review's rows at once, their counts' places blank, no note while it reads; the keys already work.
+  {
+    jobs.length = 0;
+    const first = load({ actions: "review-scope", source, details: "parent", parents: ["parent"], overlay: "q0", at: { x: 600, y: 220 } });
+    assert.equal(find(first.render(), "details-range-note"), null, "no note while it reads");
+    assert.ok(find(first.render(), "scope-changes") && find(first.render(), "scope-uncommitted"), "the rows' names at once");
+    assert.notEqual(find(first.render(), "scope-uncommitted").style.opacity, 0.64, "not greyed as empty: not read yet");
+    fire(find(first.render(), "details-range-menu"), "on_key_down", { key: "down", keystroke: "down" }, cx);
+    assert.equal(first.scopeAt, 0, "↓ works while it reads");
+    first.close(); jobs.length = 0;
+  }
   let range = await open(undefined);
+  // Another popup of the mod's (Herdr runs them in one runtime): opened again on this space, the range menu reads where it
+  // read last at once, and checks that behind it.
+  const another = (scope, p) => { scope.props = () => p; const m = new scope.Mod(); m.init(p, cx); m.testScope = scope; return m; };
+  {
+    jobs.length = 0;
+    const again = another(range.testScope, { actions: "review-scope", source, details: "parent", parents: ["parent"], overlay: "q1", at: { x: 600, y: 220 } });
+    assert.equal(again.root, "/repo", "the repository it read last, before asking again");
+    assert.ok(jobs.length > 0, "and it asks again");
+    again.close(); jobs.length = 0;
+  }
+  // Details opening reads the range menu's repository and counts, so a first opening has them.
+  {
+    const asked = [], was = env.exec;
+    jobs.length = 0;
+    const card = load({ actions: "details", source: { ...source, machine: null }, overlay: "dq", at: { x: 700, y: 40 } });
+    card.testScope.exec = async (cmd, args, opts) => { asked.push(args.join(" ")); return was(cmd, args, opts); };
+    for (let i = 0; i < 20 && jobs.length; i++) await jobs.shift()(cx);
+    assert.ok(asked.some(a => a.includes("--show-toplevel")), "where Review reads, asked as Details opens");
+    assert.ok(asked.some(a => a.includes("status")), "and its counts");
+    const menu = another(card.testScope, { actions: "review-scope", source, details: "dq", parents: ["dq"], overlay: "q2", at: { x: 600, y: 220 } });
+    assert.equal(menu.root, "/repo", "its menu, opened after, starts where Details read");
+    menu.close(); jobs.length = 0;
+  }
   assert.ok(!label(range, "scope-uncommitted").endsWith(", shown") && !label(range, "scope-changes").endsWith(", shown"), "nothing claimed shown");
   assert.notEqual(find(range.render(), "scope-uncommitted").style.bg, theme.selected, "nothing lit on opening");
   state["t3.panels"] = { s: { tabs: [{ id: "review", born: 9 }], active: "review", open: true } };
