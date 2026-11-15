@@ -4,33 +4,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-function element(kind = "div", source) {
-  const node = { kind, source, items: [], handlers: {}, style: {}, hoverStyle: {} };
-  const proxy = new Proxy(node, { get(target, key) {
-    if (key in target) return target[key];
-    return (...args) => {
-      if (key === "when") { if (args[0]) args[1](proxy); }
-      else if (key === "child" || key === "trigger") node.items.push(args[0]);
-      else if (key === "children") node.items.push(...args[0]);
-      else if (key === "on_mouse_down") node.handlers[`${key}:${args[0]}`] = args[1];
-      else if (key.startsWith("on_")) node.handlers[key] = args[0];
-      else if (key === "id") node.key = args[0];
-      else if (key === "hover") { const hovered = element(); args[0](hovered); node.hoverStyle = hovered.style; }
-      else node.style[key] = args.length === 1 ? args[0] : args;
-      return proxy;
-    };
-  } });
-  return proxy;
-}
-const find = (node, id) => !node || typeof node !== "object" ? null : node.key === id ? node : node.items.map(c => find(c, id)).find(Boolean) ?? null;
+const kit = require("./check-kit.js");
+const element = kit.elements({ args: "auto" }), { find, plain } = kit;
+// A hidden measuring copy (h 0) says nothing.
 const strings = (node) => typeof node === "string" ? [node] : node && typeof node === "object" && node.style.h !== 0 ? node.items.flatMap(strings) : [];
-function fire(node, event, ...args) {
-  assert.ok(node, `missing event target: ${event}`);
-  assert.equal(typeof node.handlers[event], "function", event);
-  // No event given: Herdr's own, an empty one and the frame's cx.
-  return node.handlers[event](...(args.length ? args : [{}, cx]));
-}
-const plain = (value) => JSON.parse(JSON.stringify(value));
+// No event given: Herdr's own, an empty one and the frame's cx.
+const fire = (node, event, ...args) => kit.fire(node, event, ...(args.length ? args : [{}, cx]));
 
 const state = {}, calls = [], overlays = [], commands = [], jobs = [], zoom = 1.1;
 const theme = new Proxy({ foreground: "#f4f4f6", dim: "#77777f", border: "#2a2a30", hover: "#202024", input: "#3a3a40" }, { get: (t, k) => t[k] ?? "#a9a9b4" });

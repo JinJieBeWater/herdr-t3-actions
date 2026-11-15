@@ -4,30 +4,19 @@ T3 Code's run button for Herdr App's top bar: `▶ <name> | ▾` runs the action
 
 ![Actions](preview.png)
 
-## What you see
+## Where it's specified
 
-- **Control** (`t3-actions` in a top-bar block, 24px tall, centered in the bar's height): one 1px `border` outline, radius 6, 12px `dim` text. With actions: the primary action's 14px icon and its name (140px max, truncated), 8px each side, then a 1×14px `border` rule, then a `chevron-down` (14px, 5px each side). With none: a 14px play icon and `Add action`, 8px each side. No fill at rest; a part hovered fills `hover` to the outline, its icon and text `foreground`, and has a hover label, as Herdr T3's. 8px after it, before what follows in the bar.
-- **Menu** (this mod with props `{ "actions": "menu" }`, a 220px popup, as wide as Herdr T3's other menus, hanging 4 under the control, right edges together, as T3's (`align="end"`)): one 28px row per action (icon, name, a gear on the right), a divider, then `+ Add action`. Nothing is lit until a key or the pointer gets there, so Enter right after opening runs nothing; ↑/↓ move the highlight, Enter runs the row lit, and the pointer leaving a row clears its light.
-- **Editor** (props `{ "actions": "edit", "id" }`, a 440×410 dialog): Name, Command and Folder (optional) inputs; Icon (play, test, lint, configure, build, debug: lucide's play, flask-conical, list-checks, wrench, hammer, bug, as T3 Code) and Run in (Tab, Right, Down) choices; Delete (when editing; asks through this mod's own confirm dialog, `actions: "confirm"`, whose `Delete` button answers with `t3-actions.delete-action:<id>`), Cancel, Save (needs a name and a command, faded to 64% and inert until it has them; Enter in an input saves).
+`mods/t3-actions` is the [Herdr T3 layout](https://github.com/JinJieBeWater/herdr-t3)'s, copied here by its `scripts/sync.sh`. Its look and behaviour (the control, the menu, the editor and its confirm dialog) are herdr-t3's [dialogs spec](https://github.com/JinJieBeWater/herdr-t3/blob/main/docs/internals/specs/dialogs.md#actions) and [visual tokens](https://github.com/JinJieBeWater/herdr-t3/blob/main/docs/internals/t3-tokens.md); change it there. What follows is only how it differs on its own.
 
-## How it behaves
+## On its own
 
-- As T3 Code's project actions but global: the primary action is the one run last, else the first. `▶` runs it; a menu row runs that action and makes it primary; the gear opens the editor.
-- Running is `terminal.open { argv: ["sh", "-c", command], name, place, folder? }`: a new tab or a split right/down every time, named after the action; the shell stays when the command ends. With no folder it starts in the focused terminal's folder; with a mod pane focused, a terminal's in the same tab, else the space's; `~` is expanded.
-- Actions live in `shared("t3-actions.actions")` = `{ list: [{ id, name, command, icon, place, cwd? }], last }`, which Herdr keeps across restarts.
-
-## Built from
-
-- `mods/t3-actions/main.js`: one mod, three roles by `props().actions`: none (the control), `"menu"`, `"edit"`; the control opens the other two with `openOverlay({ mod: "t3-actions", … })`.
-- It sizes its own block: `on_size_change` on a `flex_none` wrapper (the control and its 8px) reports its full width even when the block is narrower; divided by `settings().zoom` (it reports zoomed pixels), it goes to `run("layout.resize", { id: props().block, px })`, only when it changed. Herdr keeps that size with the layout's clicks.
-- With `shared("t3-tabs.compact")` true (Herdr T3's bar sets it under 1024px; unset elsewhere), the control drops its text: `▶`, or `▶ | ▾`. Hover labels and accessibility labels keep the names.
-- Icons: `mods/t3-actions/icons/action-*.svg` (lucide), Herdr's `mods/workspace-chrome/chevron-down.svg`, `settings.svg`, `plus.svg`.
+- `mod.json` places it nowhere (`"place": "none"`): a layout puts it in a top-bar block, `{ "mod": "t3-actions", "props": { "block": "<the block's id>" } }`, in a row with `"resizable": false`. It sizes that block itself (`layout.resize` with `props().block`), so the row mustn't be dragged.
+- Without Herdr T3's bar nothing sets `shared("t3-tabs.compact")`: the control always shows its words.
+- Running is `terminal.open { argv: ["sh", "-c", command], name, place, folder? }`, in the focused terminal's folder when the action names none. Actions live in `shared("t3-actions.actions")`, which Herdr keeps across restarts.
 
 ## Watch out
 
-- A hover style's color reaches text but never an svg: the control brightens its icon by state (`on_hover`), not by `.hover()`.
-- The menu's popup is placed from the press's `e.bounds` (▾'s, window coordinates): right edge on the outline's, 1 past ▾, top 4 under the outline; with no press (assistive tech), at the pointer.
-- `layout.resize` doesn't reach a block in a floating window's layout. The block's row needs `"resizable": false`: rows default to resizable, and a drag would fight the block sizing itself.
+- `layout.resize` doesn't reach a block in a floating window's layout: there the block keeps its size.
 - Commands run through `sh -c`: your shell's aliases and functions aren't there, and plain Windows has no `sh`.
 
 ## Done when

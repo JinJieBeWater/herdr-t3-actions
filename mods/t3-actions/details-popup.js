@@ -14,7 +14,8 @@ import { detailsAnchor } from "./titlebar.js";
 export const MENU_CLOSED = closedKey("t3-actions", "menu"), DETAILS_CLOSED = closedKey("t3-actions", "details");
 export const CHEVRON = "mods/t3-actions/icons/chevron-down.svg";
 // T3 threadDetailsPanelStyles: the card 280 wide, its rows inside its 1px border and 8 padding.
-export const CARD_W = 280, ROW_W = CARD_W - 2 - 16, CARD_MAX = 420;
+const CARD_W = 280, ROW_W = CARD_W - 2 - 16;
+export const CARD_MAX = 420;
 
 // Only this run: Details' popup id. Mods share one JS context (terminal-context.js), so the bar's copy and the popups' read the same.
 const reg = () => /** @type {any} */ (globalThis).t3Details ??= { id: null };

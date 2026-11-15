@@ -136,7 +136,7 @@ export function rangeMenu(view) {
 }
 
 /** Commits beside the range menu: what the menu read, its search, its rows. */
-export function initCommits(view, cx) {
+export function initCommits(view) {
   const range = /** @type {any} */ (globalThis).t3DetailsRange;
   if (!range) return closeOverlay(props().overlay);
   for (const k of ["space", "root", "page", "base", "scopeGit", "picks", "refs", "scopeRoot", "scopeBase", "pick"]) view[k] = range[k];

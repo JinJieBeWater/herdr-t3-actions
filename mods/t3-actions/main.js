@@ -6,7 +6,7 @@ import { h_flex, v_flex, InputState, Input } from "gpui-base";
 import { theme, run, openOverlay, closeOverlay, props, setShared, spaces, settings, nextCommand, shared } from "herdr";
 import { glow } from "./tip.js";
 import { stopsInit, stopsEnd, stop, focusRoot, onStop } from "./focus.js";
-import { KEY, migrate } from "./store.js";
+import { KEY } from "./store.js";
 import { button, radiusOf } from "./button.js";
 import { trigger } from "./trigger.js";
 import { toggleDetails, dismissDetails, layerClosed, openedDetails, MENU_CLOSED, DETAILS_CLOSED } from "./details-popup.js";
@@ -127,8 +127,6 @@ export default class Actions extends View {
 
   init(_props, cx) {
     this.hot = null;
-    // Installed alone, this may be the only mod of the layout's here: keys under old names move first (docs/internals/storage.md).
-    migrate();
     const overlay = props()?.actions;
     if (overlay === "edit") initEditor(this, cx);
     if (overlay === "menu") initMenu(this, cx);
@@ -138,7 +136,7 @@ export default class Actions extends View {
     if (overlay === "confirm") initConfirm(this, cx);
     if (overlay === "details") { stopsInit(this, cx, "modal"); initDetails(this, cx); }
     if (overlay === "review-scope") { stopsInit(this, cx, "modal"); initRangeMenu(this, cx); }
-    if (overlay === "review-commits") { stopsInit(this, cx, "modal"); initCommits(this, cx); }
+    if (overlay === "review-commits") { stopsInit(this, cx, "modal"); initCommits(this); }
     if (!overlay) stopsInit(this, cx);
     // The bar's copy answers Delete's dialog: `t3-actions.delete-action:<id>`.
     if (!overlay) cx.spawn(async (cx) => {
