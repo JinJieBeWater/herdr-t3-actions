@@ -7,7 +7,7 @@ import { tip, glow } from "./tip.js";
 import { nameText, measuredTooltip } from "./measured-text.js";
 import { stopsInit, stop, focusRoot, onStop } from "./focus.js";
 import { menuKeys, scrollList, litProp, propsLit } from "./list.js";
-import { menuRow } from "./menu-row.js";
+import { MENU_ROW, menuRow } from "./menu-row.js";
 import { KEY } from "./store.js";
 import { button, radiusOf, split, cardRow, tint } from "./button.js";
 import { opener, popupOpen, hang } from "./trigger.js";
@@ -26,11 +26,15 @@ const primary = ({ list, last }) => list.find(a => a.id === last) ?? list[0];
 // The menu: a popup's height is only a maximum, so its list sets its own. REST: its padding and Add action.
 // The menu as wide as the layout's other menus (t3-menu's, T3's); a longer name is cut short.
 const MENU_MAX = 420, MENU_REST = 36, MENU_W = 220;
+const menuHeight = (count) => Math.min(MENU_MAX, MENU_REST + count * MENU_ROW);
 export const editor = (id) => { const p = props() ?? {}; return openOverlay({ mod: MOD, kind: "dialog", frame: "none", width: 512, props: { actions: "edit", id, source: p.source, details: p.actions === "details" ? p.overlay : p.details } }); };
 
 // Hung 4 under the control, right edges together (its outline 1 past ▾, and 1 under it), as T3's (align end) and the layout's
-// other menus from a right-side button: `b` is ▾'s bounds from the press.
-const underBar = (b) => hang(b, MENU_W, { gap: 5, nudge: 1 });
+// other menus from a right-side button: `b` is ▾'s bounds from the press or the demo's synthetic bounds.
+export function openBarMenu(b) {
+  return openOverlay({ mod: MOD, kind: "popup", ...hang(b, MENU_W, { gap: 5, nudge: 1 }), width: MENU_W,
+    height: menuHeight(state().list.length), props: { actions: "menu", source: props()?.source, details: null, ...litProp(!b) } });
+}
 
 function runAction(a) {
   const source = props()?.source;
@@ -63,7 +67,7 @@ export function barControl(view, t, stopPress = (_e, cx) => cx.stop_propagation(
     run => measuredTooltip(view, t, "action-run", `Run ${main.name}`, stop(view, t, "action-run", run.text_color(lit(view, "action-run")).on_hover(glow(view, "action-run"))
       .on_click(() => runAction(main))
       .child(icon(main.icon).size(14)).when(!compact, el => el.child(nameText(view, "action-run", main.name).max_w(140))), 8), { shown: !compact, below: true }),
-    more => stop(view, t, "action-more", opener(view, { id: "action-more", closed: MENU_CLOSED, onOpen: (b) => openOverlay({ mod: MOD, kind: "popup", ...underBar(b), width: MENU_W, height: Math.min(MENU_MAX, MENU_REST + s.list.length * 28), props: { actions: "menu", source: props()?.source, details: null, ...litProp(!b) } }) })(
+    more => stop(view, t, "action-more", opener(view, { id: "action-more", closed: MENU_CLOSED, onOpen: openBarMenu })(
       more.on_hover(glow(view, "action-more"))), 8))
     .text_size(12).text_color(t.dim).on_mouse_down("left", stopPress);
 }
@@ -78,7 +82,7 @@ export function detailsControl(view, t) {
     // Its whole name in a tooltip only when it's cut (measured-text.js), on the half, whose hover it is.
     run => measuredTooltip(view, t, "action-run", main.name, stop(view, t, "action-run", run.on_hover(glow(view, "action-run")).on_click(() => runAction(main))
       .child(icon(main.icon).size(16).flex_none().text_color(t.dim)).child(nameText(view, "action-run", main.name, { size: 13, weight: "medium" }).flex_1().whitespace_nowrap()), 8), { below: true }),
-    more => stop(view, t, "action-more", rowMenu(view, "action-more", Math.min(MENU_MAX, MENU_REST + s.list.length * 28), (place, keys) => openLayer("menu", place, {}, keys))(more.on_hover(glow(view, "action-more"))), 8));
+    more => stop(view, t, "action-more", rowMenu(view, "action-more", menuHeight(s.list.length), (place, keys) => openLayer("menu", place, {}, keys))(more.on_hover(glow(view, "action-more"))), 8));
 }
 
 // The menu takes the keyboard, as the shipped menu does. As T3's, nothing is lit until a key or the pointer gets there.
@@ -100,7 +104,7 @@ export function actionsMenu(view) {
     // On a row's Edit, Enter is Edit's.
     .track_focus(view.keys).on_key_down(menuKeys(view, labels, (at) => { done(); picks[at](); }, { enter: () => !onStop(view) }))
     // Add action stays outside the list, always in view: with it lit, nothing here is.
-    .child(scrollList(view, "actions-list", { count: list.length, row: 28, height: Math.min(list.length * 28, MENU_MAX - MENU_REST), at: view.at < list.length ? view.at : -1, wheeled: (keep) => { if (keep >= 0) view.at = keep; }, draw: (at) => { const a = list[at]; return row(`action-${a.id}`, at, icon(a.icon).size(16).text_color(t.muted), a.name,
+    .child(scrollList(view, "actions-list", { count: list.length, row: MENU_ROW, height: menuHeight(list.length) - MENU_REST, at: view.at < list.length ? view.at : -1, wheeled: (keep) => { if (keep >= 0) view.at = keep; }, draw: (at) => { const a = list[at]; return row(`action-${a.id}`, at, icon(a.icon).size(16).text_color(t.muted), a.name,
         div().size(24).flex_none().when(view.at === at || onStop(view) === `edit-${a.id}`, el => el.child(tip(view, t, `edit-${a.id}`, `Edit ${a.name}`, stop(view, t, `edit-${a.id}`, button(t, `edit-${a.id}`, { icon: "mods/t3-actions/icons/settings.svg", label: `Edit ${a.name}`, surface: "card", hot: view.hot === `edit-${a.id}` })
           .on_hover(glow(view, `edit-${a.id}`)).on_click((_e, cx) => { cx.stop_propagation(); done(); editor(a.id); }), radiusOf()), { below: true })))); } }))
     .child(row("action-new", list.length, "mods/t3-actions/icons/plus.svg", "Add action")));

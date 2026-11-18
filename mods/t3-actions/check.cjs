@@ -366,13 +366,13 @@ delete state["t3-tabs.compact"];
   env.layout = () => ({ id: "root", children: [{ id: "work" }, { id: "panel", children: [{ id: "panel-body", children: [{ id: "files" }, { id: "review" }, { id: "panel-empty" }] }] }] });
   env.exec = async (_cmd, args) => args.includes("--show-toplevel") ? { code: 0, stdout: "/repo\n" } : { code: 0, stdout: "" };
   delete state["review.shown"]; delete state["t3.panels"];
-  const source = { space: "s", tab: "b", terminal: "t9", folder: "/repo/sub" };
+  const source = { space: "s", tab: "b", terminal: "t9", folder: "/captured" };
   const open = async (shown) => {
     state["review.shown"] = shown;
     jobs.length = 0;
     const range = load({ actions: "review-scope", source, details: "parent", parents: ["parent"], overlay: "quick", at: { x: 600, y: 220 } });
     await jobs.shift()(cx);
-    Object.assign(range, { scopeGit: { root: "/repo", branch: "feature", base: "main", baseRef: "main", unmerged: 2, changed: 0 },
+    Object.assign(range.scope, { scopeGit: { root: "/repo", branch: "feature", base: "main", baseRef: "main", unmerged: 2, changed: 0 },
       picks: { commits: [{ sha: "abc123", subject: "fix: focused review", time: 1 }], unpushed: [] }, refs: [], scopeRoot: "/repo", scopeBase: null });
     return range;
   };
@@ -385,7 +385,7 @@ delete state["t3-tabs.compact"];
     assert.ok(find(first.render(), "scope-changes") && find(first.render(), "scope-uncommitted"), "the rows' names at once");
     assert.notEqual(find(first.render(), "scope-uncommitted").style.opacity, 0.64, "not greyed as empty: not read yet");
     fire(find(first.render(), "details-range-menu"), "on_key_down", { key: "down", keystroke: "down" }, cx);
-    assert.equal(first.scopeAt, 0, "↓ works while it reads");
+    assert.equal(first.scope.scopeAt, 0, "↓ works while it reads");
     first.close(); jobs.length = 0;
   }
   let range = await open(undefined);
@@ -395,7 +395,7 @@ delete state["t3-tabs.compact"];
   {
     jobs.length = 0;
     const again = another(range.testScope, { actions: "review-scope", source, details: "parent", parents: ["parent"], overlay: "q1", at: { x: 600, y: 220 } });
-    assert.equal(again.root, "/repo", "the repository it read last, before asking again");
+    assert.equal(again.scope.root, "/repo", "the repository it read last, before asking again");
     assert.ok(jobs.length > 0, "and it asks again");
     again.close(); jobs.length = 0;
   }
@@ -409,7 +409,7 @@ delete state["t3-tabs.compact"];
     assert.ok(asked.some(a => a.includes("--show-toplevel")), "where Review reads, asked as Details opens");
     assert.ok(asked.some(a => a.includes("status")), "and its counts");
     const menu = another(card.testScope, { actions: "review-scope", source, details: "dq", parents: ["dq"], overlay: "q2", at: { x: 600, y: 220 } });
-    assert.equal(menu.root, "/repo", "its menu, opened after, starts where Details read");
+    assert.equal(menu.scope.root, "/repo", "its menu, opened after, starts where Details read");
     menu.close(); jobs.length = 0;
   }
   assert.ok(!label(range, "scope-uncommitted").endsWith(", shown") && !label(range, "scope-changes").endsWith(", shown"), "nothing claimed shown");
@@ -436,7 +436,7 @@ delete state["t3-tabs.compact"];
   assert.ok(sub.at.x >= 600 + (4 + 254) * zoom - 1, "beside its row, as t3-menu's submenus");
   assert.ok(Math.abs(sub.at.y - (220 + (4 + 2 * 28 + 9 - 5) * zoom)) < 0.01, "its first row level with Commits, under the two ranges and the rule");
   env.t3DetailsRange = range;
-  const commits = load({ ...sub.props, overlay: "commits" });
+  const commits = load({ ...sub.props, overlay: overlays.length });
   delete env.t3DetailsRange;
   // A commit row lights under the pointer and goes out when it leaves, as every menu row (menu-row.js).
   fire(find(commits.render(), "scope-commit-abc123"), "on_hover", true, cx);
@@ -446,6 +446,79 @@ delete state["t3-tabs.compact"];
   fire(find(commits.render(), "scope-commit-abc123"), "on_click", {}, cx);
   assert.deepEqual([state.review.page, state.review.base], ["/commit/abc123", "/branch/feature"]);
   range.close();
+}
+{
+  // Open Details and its menus through their controls in one runtime, as the host does. A and B are two tabs of one space.
+  let tab = "a", release;
+  const closed = [], panelCalls = [];
+  const tabs = ["a", "b"], cwd = id => `/repo-${id}/sub`;
+  const bar = load({ details: true }), scope = bar.testScope;
+  const overlayId = spec => overlays.indexOf(spec) + 1;
+  const mounted = new Map();
+  const inOverlay = (spec) => {
+    const p = { ...spec.props, overlay: overlayId(spec) };
+    scope.props = () => p;
+    const m = new scope.Mod(); m.init(p, cx); mounted.set(m, p); return m;
+  };
+  scope.spaces = () => [{ id: "s", active: true, folder: "/space", tabs: tabs.map(id => ({ id, active: id === tab })) }];
+  scope.panes = () => tabs.map(id => ({ tab: id, terminal: `term-${id}`, cwd: cwd(id) }));
+  scope.focused = () => ({ space: "s", tab, terminal: `term-${tab}` });
+  scope.closeOverlay = id => closed.push(id);
+  scope.run = (name, args) => panelCalls.push([name, plain(args)]);
+  const slots = ["files", "review", "panel-empty"];
+  scope.layout = () => ({ id: "panel", children: [{ id: "panel-body", children: slots.map(id => ({ id })) }] });
+  const bProbe = new Promise(done => { release = done; });
+  scope.exec = async (_cmd, args, { cwd: dir } = {}) => {
+    if (!args.includes("--show-toplevel")) return { code: 1, stdout: "" };
+    if (dir === cwd("b")) await bProbe;
+    return { code: 0, stdout: dir.replace(/\/sub$/, "") + "\n" };
+  };
+  scope.readReview = async root => ({ root, branch: "feature", base: "main", unmerged: 1 });
+  scope.readPicks = async ({ root }) => ({ commits: [{ sha: root === "/repo-a" ? "aa1111" : "bb2222", subject: root }], unpushed: [] });
+  scope.readRefs = async () => [];
+  const drain = async () => { while (jobs.length) await jobs.shift()(cx); };
+  const opened = (m, id) => { fire(find(m.render(), id), "on_click", {}, cx); return inOverlay(overlays.at(-1)); };
+  const card = () => { scope.props = () => ({ details: true }); return opened(bar, "details-toggle"); };
+  jobs.length = 0;
+  delete state["t3.panels"]; delete state["review.shown"]; delete state["t3-actions.detailsClosed"]; delete state["t3-actions.menuClosed"];
+  const aDetails = card();
+  await drain();
+  aDetails.close();
+  tab = "b";
+  const bDetails = card(), bMenu = opened(bDetails, "details-review-more");
+  const bJobs = jobs.splice(0).map(job => job(cx));
+  const oldRange = find(bMenu.render(), "scope-changes");
+  const stale = opened(bMenu, "scope-commits");
+  const staleSpec = overlays.at(-1);
+  const oldCommit = find(stale.render(), "scope-commit-aa1111");
+  assert.ok(oldCommit, "cached A commits are drawn while B's Git probe is pending");
+  const before = state.review, beforeClose = closed.length;
+  fire(oldCommit, "on_click", {}, cx);
+  const whileProbing = [state.review === before, panelCalls.length, closed.length - beforeClose];
+  release(); await Promise.all(bJobs); await drain();
+  const afterProbe = closed.length;
+  fire(oldCommit, "on_click", {}, cx);
+  fire(oldRange, "on_click", {}, cx);
+  assert.deepEqual([whileProbing, state.review === before, panelCalls.length, closed.length - afterProbe],
+    [[true, 0, 0], true, 0, 0], "old A selections cannot show Review or close Details, before or after B confirms");
+  const mountedLate = inOverlay(staleSpec);
+  assert.equal(find(mountedLate.render(), "scope-commit-bb2222"), null, "a late mount of A's submenu cannot turn into B's");
+
+  const menuProps = () => mounted.get(bMenu);
+  scope.props = menuProps;
+  const current = opened(bMenu, "scope-commits");
+  const newCommit = find(current.render(), "scope-commit-bb2222");
+  assert.ok(newCommit, "the new repository's commits are selectable");
+  slots.splice(1, 1);
+  fire(newCommit, "on_click", {}, cx);
+  assert.deepEqual([state.review, panelCalls.length], [before, 0], "a removed Review slot cannot take a request");
+  slots.splice(1, 0, "review");
+  fire(newCommit, "on_click", {}, cx);
+  const born = state["t3.panels"].s.tabs.find(t => t.id === "review").born;
+  assert.deepEqual([state.review.space, state.review.root, state.review.page, state.review.born, closed.at(-1)],
+    ["s", "/repo-b", "/commit/bb2222", born, mounted.get(bDetails).overlay]);
+  current.close(); scope.props = menuProps; bMenu.close();
+  delete state["t3.panels"]; delete state["t3-actions.detailsClosed"]; delete state["t3-actions.menuClosed"];
 }
 {
   // Details by keys (cmd-shift-b, or Enter on its button): its first control holds the keyboard, ringed; ↑/↓ walk its rows and

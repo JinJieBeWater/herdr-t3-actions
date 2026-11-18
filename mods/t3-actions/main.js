@@ -12,10 +12,11 @@ import { trigger } from "./trigger.js";
 import { toggleDetails, dismissDetails, layerClosed, openedDetails, MENU_CLOSED, DETAILS_CLOSED } from "./details-popup.js";
 import { initDetails, detailsView, openInMenu, directoryMenu, detailsItemsMenu } from "./workspace-details.js";
 import { initRangeMenu, rangeMenu, closeRangeMenu, initCommits, commitsMenu } from "./review-details.js";
-import { MOD, ICONS, icon, lit, state, barControl, initMenu, actionsMenu } from "./actions.js";
+import { MOD, ICONS, icon, lit, state, barControl, openBarMenu, initMenu, actionsMenu } from "./actions.js";
 import { awaitTargets } from "./open-in.js";
 
 const PLACES = [["tab", "Tab"], ["right", "Right"], ["down", "Down"]];
+const BAR_MENU = "bar-menu:";
 
 // The answer from Delete's confirm dialog.
 function deleteAction(id) {
@@ -138,11 +139,16 @@ export default class Actions extends View {
     if (overlay === "review-scope") { stopsInit(this, cx, "modal"); initRangeMenu(this, cx); }
     if (overlay === "review-commits") { stopsInit(this, cx, "modal"); initCommits(this); }
     if (!overlay) stopsInit(this, cx);
-    // The bar's copy answers Delete's dialog: `t3-actions.delete-action:<id>`.
+    // The bar's copy answers Delete's dialog and opens the demo's standalone menu at explicit chevron bounds.
     if (!overlay) cx.spawn(async (cx) => {
       for (;;) {
         const command = await nextCommand();
         if (command.startsWith("delete-action:")) deleteAction(command.slice("delete-action:".length));
+        else if (command.startsWith(BAR_MENU)) {
+          let b;
+          try { b = JSON.parse(command.slice(BAR_MENU.length)); } catch { continue; }
+          if ([b?.x, b?.y, b?.width, b?.height].every(Number.isFinite) && b.width > 0 && b.height > 0) openBarMenu(b);
+        }
         else if (command === "details") { toggleDetails(); cx.notify(); }
         else if (command === "dismiss-details") { dismissDetails(); cx.notify(); }
       }
