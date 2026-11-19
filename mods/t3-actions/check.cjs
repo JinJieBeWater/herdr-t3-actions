@@ -26,8 +26,10 @@ const env = {
   openOverlay: (spec) => overlays.push(spec), closeOverlay() {},
   focused: () => ({ tab: "b", cwd: "/repo" }), panes: () => [], spaces: () => [{ active: true, folder: "/space" }], layout: () => ({}),
   nextCommand: () => commands.length ? Promise.resolve(commands.shift()) : new Promise(() => {}),
+  // project.js stays out of the bundle (its tint() is button.js's name); Clean up only places its mark.
+  projectMark: () => element("mark"),
 };
-const source = ["color.js", "button.js", "store.js", "tip.js", "measured-text.js", "focus.js", "trigger.js", "list.js", "menu-row.js", "open-in.js", "terminal-context.js", "surfaces.js", "panel.js", "submenu.js", "popup-menu.js", "titlebar.js", "review-git.js", "review-menu.js", "review-scope.js", "details-popup.js", "actions.js", "workspace-details.js", "review-details.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n").replace("const DISABLED = 0.64;", "const DISABLED = 0.64;\nconst drawButton = button;")
+const source = ["color.js", "button.js", "store.js", "tip.js", "measured-text.js", "focus.js", "trigger.js", "list.js", "menu-row.js", "open-in.js", "terminal-context.js", "surfaces.js", "panel.js", "submenu.js", "popup-menu.js", "titlebar.js", "review-git.js", "review-menu.js", "review-scope.js", "details-popup.js", "actions.js", "workspace-details.js", "review-details.js", "program.js", "dialog.js", "clean-up.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n").replace("const DISABLED = 0.64;", "const DISABLED = 0.64;\nconst drawButton = button;")
   .replace(/^import .*;\r?\n/gm, "").replace("export default class", "globalThis.Mod = class").replace(/^export (?=(?:async\s+)?function\b|const\b|class\b)/gm, "");
 // The handle holding the keyboard.
 let held = null;
@@ -222,6 +224,92 @@ delete state["t3-tabs.compact"];
   assert.deepEqual(plain(state["t3-actions.actions"].list.map((a) => a.id)), ["a2"]);
 
   // T3's alert dialog: its buttons run the command or only close, Enter runs it, Esc only closes.
+  // Clean up, as Inbox: an Idle shelf folded to its count, then a Left behind shelf of cards; quiet until hovered, the reason last.
+  {
+    const panesWere = env.panes, spacesWere = env.spaces;
+    let live = [{ pane: "p-agent", tab: "t-h1" }, { pane: "p-dev", tab: "t-h2" }, { pane: "p-zsh", tab: "t-p" }, { pane: "p-sh", tab: "t-a" }];
+    env.panes = () => live;
+    env.spaces = () => [
+      { id: "s-h", name: "herdling", tabs: [{ id: "t-h1" }, { id: "t-h2" }] },
+      { id: "s-p", name: "pulls.review", tabs: [{ id: "t-p" }] },
+      { id: "s-a", name: "api", tabs: [{ id: "t-a" }] },
+    ];
+    const open = (p) => load({ actions: "clean-up", command: { name: "t3-tabs.cleanup-now:1" },
+      idle: [
+        { pane: "p-agent", name: "Notarize release build", space: "herdling", spaceId: "s-h", machine: null, program: null },
+        { pane: "p-zsh", name: "zsh", space: "pulls.review", spaceId: "s-p", machine: null, program: null },
+      ],
+      cards: [
+        { pane: "p-dev", name: "Dev server", space: "herdling", spaceId: "s-h", machine: null, process: "node", program: null },
+        { pane: "p-sh", name: "lazygit", space: "api", spaceId: "s-a", machine: "vps", process: "lazygit", program: null },
+        { pane: "p-gone", name: "Old", space: "api", spaceId: "s-a", machine: null, process: "vite", program: null },
+      ], ...p });
+    let view = open();
+    let tree = view.render();
+    assert.ok(strings(tree).includes("Clean up"), "the title is the act; counts are the shelves'");
+    assert.ok(!strings(tree).some((w) => /idle terminals?\?/.test(w)), "no title repeating the shelf");
+    const shelf = find(tree, "clean-up-idle");
+    assert.ok(["Idle", "2", "closes pulls.review"].every((w) => strings(shelf).includes(w)), "Idle, its count and the spaces that go");
+    assert.equal(find(tree, "clean-up-idle-p-agent"), null, "folded until opened");
+    fire(shelf, "on_click", {}, cx);
+    tree = view.render();
+    assert.ok(["Notarize release build", "herdling"].every((w) => strings(find(tree, "clean-up-idle-p-agent")).includes(w)), "opened, a slim row each");
+    assert.ok(["Left behind", "2", "no agent at work"].every((w) => strings(find(tree, "clean-up-left")).includes(w)), "Left behind counts the live cards and says why");
+    const card = find(tree, "clean-up-card-p-dev");
+    assert.ok(["Dev server", "herdling", "node"].every((w) => strings(card).includes(w)), "a card: its space, name and process");
+    assert.equal(card.style.border, undefined, "quiet at rest: no outline, only a faint fill");
+    const same = open({ cards: [{ pane: "p-dev", name: "sleep", space: "herdling", spaceId: "s-h", machine: null, process: "sleep", program: null }] }).render();
+    assert.equal(strings(find(same, "clean-up-card-p-dev")).filter((w) => w === "sleep").length, 1, "a process its name already says isn't said twice");
+    assert.ok(["vps", "api"].every((w) => strings(find(tree, "clean-up-card-p-sh")).includes(w)), "a remote one names its machine");
+    assert.equal(find(tree, "clean-up-card-p-gone"), null, "a pane that's gone leaves Clean up");
+    assert.equal(find(tree, "clean-up-stop-p-dev"), null, "Stop only on hover");
+    view.hot = "clean-up-card-p-dev";
+    tree = view.render();
+    const stopButton = find(tree, "clean-up-stop-p-dev");
+    assert.ok(strings(stopButton).includes("Stop"), "a word, not the ×s that ask first elsewhere: it stops at once");
+    assert.ok(!strings(find(tree, "clean-up-card-p-dev")).includes("node"), "hovered, Stop takes the process's place");
+    let ran = calls.length;
+    fire(stopButton, "on_click", {}, cx);
+    assert.deepEqual(calls.slice(ran), [["t3-tabs.stop-pane:p-dev", {}]], "Stop stops it at once, no second question, and doesn't go there");
+    // Ctrl+D, as Go to's and the space menu's: the card under the pointer or holding the keyboard; with none, nothing.
+    ran = calls.length;
+    fire(find(tree, "action-clean-up"), "on_key_down", { key: "d", modifiers: { control: true } }, cx);
+    view.hot = null;
+    fire(find(view.render(), "action-clean-up"), "on_key_down", { key: "d", modifiers: { control: true } }, cx);
+    assert.deepEqual(calls.slice(ran), [["t3-tabs.stop-pane:p-dev", {}]], "Ctrl+D stops the lit card, and only that");
+    // Counts follow what's live: Dev server gone, herdling goes whole too; zsh gone, so does its count.
+    live = live.filter((x) => x.pane !== "p-dev");
+    tree = view.render();
+    assert.ok(strings(find(tree, "clean-up-idle")).includes("closes herdling and pulls.review"), "a space emptied since it opened closes too");
+    live = live.filter((x) => x.pane !== "p-zsh");
+    tree = view.render();
+    assert.ok(["1", "closes herdling"].every((w) => strings(find(tree, "clean-up-idle")).includes(w)), "the count is the live rows'");
+    assert.ok(strings(find(tree, "clean-up-yes")).includes("Close 1"));
+    live = [{ pane: "p-agent", tab: "t-h1" }, { pane: "p-dev", tab: "t-h2" }, { pane: "p-zsh", tab: "t-p" }, { pane: "p-sh", tab: "t-a" }];
+    tree = view.render();
+    ran = calls.length;
+    fire(find(tree, "clean-up-card-p-dev"), "on_click", {}, cx);
+    fire(find(tree, "clean-up-idle-p-agent"), "on_click", {}, cx);
+    assert.deepEqual(calls.slice(ran), [["t3-tabs.go-pane:p-dev", {}], ["t3-tabs.go-pane:p-agent", {}]], "a card or row goes there");
+    const note = find(tree, "clean-up-note");
+    assert.ok(strings(note).includes("Skips the tab you're on, and programs in the space you're in."), "both scopes, last");
+    assert.equal(note.style.px, 24, "a line of its own, level with the title, not squeezed beside the buttons");
+    assert.ok(!strings(find(tree, "clean-up-footer")).some((w) => w.startsWith("Skips")), "the footer holds only the buttons, as T3's alert");
+    const yes = find(tree, "clean-up-yes");
+    assert.ok(strings(yes).includes("Close 2"));
+    ran = calls.length;
+    fire(yes, "on_click", {}, cx);
+    fire(find(tree, "action-clean-up"), "on_key_down", { key: "escape" }, cx);
+    fire(find(tree, "action-clean-up"), "on_key_down", { key: "enter" }, cx);
+    assert.deepEqual(calls.slice(ran), [["t3-tabs.cleanup-now:1", {}], ["t3-tabs.cleanup-now:1", {}]], "Close and Enter empty it; Esc doesn't");
+    // Only programs left behind: no Idle shelf, nothing to empty, the cards still there.
+    tree = open({ idle: [], command: null }).render();
+    assert.deepEqual([find(tree, "clean-up-idle"), find(tree, "clean-up-yes")], [null, null]);
+    assert.ok(strings(find(tree, "clean-up-no")).includes("Done"));
+    assert.ok(find(tree, "clean-up-card-p-dev"));
+    env.panes = panesWere; env.spaces = spacesWere;
+  }
+
   {
     const ask = (p) => load({ actions: "confirm", title: "Close?", detail: "It stops.", command: { name: "x.y", args: { a: 1 } }, ...p });
     let ran = calls.length;

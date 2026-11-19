@@ -14,8 +14,10 @@ import { initDetails, detailsView, openInMenu, directoryMenu, detailsItemsMenu }
 import { initRangeMenu, rangeMenu, closeRangeMenu, initCommits, commitsMenu } from "./review-details.js";
 import { MOD, ICONS, icon, lit, state, barControl, openBarMenu, initMenu, actionsMenu } from "./actions.js";
 import { awaitTargets } from "./open-in.js";
+import { dialog, dialogTitle, dialogButton } from "./dialog.js";
+import { initCleanUp, cleanUpView } from "./clean-up.js";
 
-const PLACES = [["tab", "Tab"], ["right", "Right"], ["down", "Down"]];
+const ACTION_PLACES = [["tab", "Tab"], ["right", "Right"], ["down", "Down"]];
 const BAR_MENU = "bar-menu:";
 
 // The answer from Delete's confirm dialog.
@@ -49,11 +51,6 @@ function saveEditor(view) {
   closeOverlay(props().overlay);
 }
 
-// T3's dialog: 512 wide (max-w-lg) and as tall as its content. Its 16px corners are more than the app's frame has, so it opens frame: "none" and draws them.
-const dialog = (id, t) => v_flex().id(id).size_full().relative().rounded(16).border(1).border_color(t.border).bg(t.popover).shadow_2xl().text_size(14).line_height("20px");
-const dialogTitle = (t, text) => div().text_size(20).line_height("27.5px").font_semibold().text_color(t.foreground).child(text);
-const dialogButton = (view, t, id, text, variant, act, disabled = false) => stop(view, t, id,
-  button(t, id, { text, variant, size: "default", surface: "card", disabled }).when(!disabled, el => el.cursor_pointer().on_click(act)), radiusOf("default"));
 
 function editorView(view) {
   const t = theme(), done = () => closeOverlay(props().overlay);
@@ -78,7 +75,7 @@ function editorView(view) {
       .child(h_flex().gap(16)
         .child(v_flex().gap(6).child(label("Icon")).child(h_flex().gap(2).children(ICONS.map(i =>
           choice(`icon-${i}`, view.icon === i, () => { view.icon = i; }, `Icon: ${i}`, icon(i).size(16)).px(0)))))
-        .child(v_flex().gap(6).child(label("Run in")).child(h_flex().gap(2).children(PLACES.map(([p, text]) =>
+        .child(v_flex().gap(6).child(label("Run in")).child(h_flex().gap(2).children(ACTION_PLACES.map(([p, text]) =>
           choice(`place-${p}`, view.place === p, () => { view.place = p; }, `Run in: ${text}`, text)))))))
     // As T3's editor: its footer is the bare kind, with no rule.
     .child(h_flex().mt_auto().px(24).py(16).gap(8).items_center()
@@ -135,6 +132,7 @@ export default class Actions extends View {
     if (overlay === "directory-menu") initMenu(this, cx);
     if (overlay === "details-items") initMenu(this, cx);
     if (overlay === "confirm") initConfirm(this, cx);
+    if (overlay === "clean-up") initCleanUp(this, cx);
     if (overlay === "details") { stopsInit(this, cx, "modal"); initDetails(this, cx); }
     if (overlay === "review-scope") { stopsInit(this, cx, "modal"); initRangeMenu(this, cx); }
     if (overlay === "review-commits") { stopsInit(this, cx, "modal"); initCommits(this); }
@@ -172,6 +170,7 @@ export default class Actions extends View {
     if (overlay === "details-items") return detailsItemsMenu(this);
     if (overlay === "edit") return editorView(this);
     if (overlay === "confirm") return confirmView(this);
+    if (overlay === "clean-up") return cleanUpView(this);
     if (overlay === "details") return detailsView(this);
     if (overlay === "review-scope") return rangeMenu(this);
     if (overlay === "review-commits") return commitsMenu(this);
