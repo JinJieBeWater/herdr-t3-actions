@@ -1,7 +1,5 @@
-// Clean up (docs/internals/specs/dialogs.md#clean-up), drawn as Inbox is: an Idle shelf folded to its count, then a Left behind
-// shelf whose programs, running where no agent is at work any more, are cards. Quiet until hovered (t3-tokens P7), the act for a title and the reason last (P5, P9).
-// t3-tabs.cleanup opens it: props { idle: [row], cards: [row + process], command: { name } | null }, a row { pane, name, space,
-// spaceId, machine, program }. What's gone since leaves, and the counts and the spaces that close follow.
+// Clean up (docs/internals/specs/dialogs.md#clean-up), drawn as Inbox is: an Idle shelf folded to its count, then a Left behind shelf of cards.
+// t3-tabs.cleanup opens it: props { idle: [row], cards: [row + process], command: { name } | null }, a row { pane, name, space, spaceId, machine, program }.
 import { div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { theme, run, closeOverlay, props, panes, spaces } from "herdr";
@@ -49,7 +47,7 @@ function shelfHead(view, t, id, label, count, { open = false, side = null, toggl
     .role("button").accessibility_label(`${open ? "Hide" : "Show"} ${count} ${label.toLowerCase()}`), 6);
 }
 
-// What closes: Settled's slim row, 32 here, its mark 40% until lit; a click goes there before you empty it.
+// What closes: Settled's slim row, its mark 40% until lit; a click goes there before you empty it.
 function idleRow(view, t, r, done) {
   const id = `clean-up-idle-${r.pane}`, lit = view.hot === id || within(view, [id]);
   return stop(view, t, id, h_flex().id(id).h(32).px(8).gap(10).items_center().rounded(6).cursor_pointer()
@@ -125,7 +123,7 @@ export function cleanUpView(view) {
       .when(cards.length > 0, (el) => el.child(v_flex()
         .child(shelfHead(view, t, "clean-up-left", "Left behind", cards.length, { side: "no agent at work" }))
         .child(v_flex().gap(5).children(cards.map((c) => card(view, t, c, done)))))))
-    // The reason last (P9), on a line of its own level with the title: beside the buttons it wrapped and pulled at them.
+    // The reason last (P9), on a line of its own level with the title, clear of the buttons.
     .child(div().id("clean-up-note").px(24).pt(12).text_size(12).line_height("16px").text_color(t.dim)
       .child("Skips the tab you're on, and programs in the space you're in."))
     .child(h_flex().id("clean-up-footer").mt_auto().px(24).pt(20).pb(24).gap(8).items_center().justify_end()

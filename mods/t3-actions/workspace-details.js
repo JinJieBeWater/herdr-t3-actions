@@ -1,6 +1,5 @@
 // Details (cmd-shift-b): a native popup, never a layout column, so opening it can't resize a terminal (docs/adr/0019).
-// This draws its card and its own menus; details-popup.js opens it and hangs the menus off it. Only Details watches its
-// source: a menu acts on it after a last check, and goes with Details when it goes.
+// Only Details watches its source: a menu acts on it after a last check, and goes with Details when it goes.
 import { div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { checking, props, settings, closeOverlay, exec, notify, theme, window, shared, setShared } from "herdr";
@@ -124,8 +123,8 @@ export function directoryMenu(view) {
   const t = theme(), p = props();
   const copy = (_at, cx) => { cx.write_to_clipboard(p.source.folder ?? ""); closeOverlay(p.overlay); notify({ title: "Path copied", body: p.source.folder ?? "", level: "success" }); };
   return v_flex().id("details-directory-menu").p(4).bg(t.popover).track_focus(view.keys)
-    .on_key_down(menuKeys(view, ["Copy full path"], copy))
-    .child(menuRow(view, t, "details-copy-directory", { at: [view, "at", 0], label: "Copy full path", pick: (cx) => copy(0, cx) }));
+    .on_key_down(menuKeys(view, ["Copy path"], copy))
+    .child(menuRow(view, t, "details-copy-directory", { at: [view, "at", 0], label: "Copy path", pick: (cx) => copy(0, cx) }));
 }
 
 

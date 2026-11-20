@@ -1,6 +1,5 @@
-// Details' popup (cmd-shift-b): opening and closing it, the source it was opened on, and the menus that hang off it
-// (popup-menu.js), each under its row (underRow, rowMenu). What it draws is workspace-details.js's; its Actions row actions.js's,
-// its Review row review-details.js's.
+// Details' popup (cmd-shift-b): opening and closing it, the source it was opened on, and the menus that hang off it (popup-menu.js).
+// What it draws is workspace-details.js's; its Actions row actions.js's, its Review row review-details.js's.
 import { spaces, panes, props, settings, openOverlay, closeOverlay, setShared, run, focused } from "herdr";
 import { within, focusStop } from "./focus.js";
 import { hang, opener } from "./trigger.js";

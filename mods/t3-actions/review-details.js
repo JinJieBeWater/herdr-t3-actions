@@ -1,6 +1,5 @@
-// Details' Review row: a split row. Its main half shows Review (the range it's on, or its default); its chevron opens the
-// range menu, a popup under the row, whose Commits opens beside it in another (submenu.js), as t3-menu's Snooze. The rows,
-// reads and picks are Review's own (review-scope.js); a confirmed pick opens that range (panel.js openReview).
+// Details' Review row: its main half shows Review (its range, or its default); its chevron opens the range menu under the row, whose
+// Commits opens beside it (submenu.js), as t3-menu's Snooze. The rows, reads and picks are Review's own (review-scope.js).
 import { div, svg } from "gpui-kit";
 import { v_flex, InputState } from "gpui-base";
 import { checking, props, closeOverlay, theme } from "herdr";
@@ -20,7 +19,7 @@ import { sourceOkay, openLayer, underRow, rowMenu, splitHot, CHEVRON, MENU_CLOSE
 const ICON_DIR = "mods/t3-actions/icons";
 // The range menu at its tallest: four ranges, the rule, Commits, its padding. The app fits a popup to what it draws.
 const RANGE_H = 8 + 4 * MENU_ROW + 9 + MENU_ROW;
-// The Commits submenu: T3's w-80; its list 320 tall at most, under its search (43) and padding.
+// The Commits submenu: T3's w-80, and its list's tallest under its search (43) and padding.
 const COMMITS_W = 320, COMMITS_LIST = 320;
 // Where each space's Review read last (panel.js reviewRepo), for this mod's run: the menu reads there at once and checks it after.
 const roots = new Map();

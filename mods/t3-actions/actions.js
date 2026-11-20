@@ -45,7 +45,7 @@ function runAction(a) {
   const f = focused();
   const folder = a.cwd?.startsWith("~") ? home() + a.cwd.slice(1)
     : a.cwd || source?.folder || f?.cwd || panes().find(p => p.tab === f?.tab && p.cwd)?.cwd || spaces().find(s => s.active)?.folder;
-  // shortcut: sh -c skips your shell's aliases and functions and needs sh (not on plain Windows); run them through `zsh -ic` in the command if needed.
+  // shortcut: sh -c skips your shell's aliases and functions and needs sh (not plain Windows); `zsh -ic` in the command gets them.
   run("terminal.open", { argv: ["sh", "-c", a.command], name: a.name, place: a.place ?? "tab", ...(folder ? { folder } : {}) });
 }
 

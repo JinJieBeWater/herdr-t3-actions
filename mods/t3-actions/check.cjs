@@ -31,7 +31,6 @@ const env = {
 };
 const source = ["color.js", "button.js", "store.js", "tip.js", "measured-text.js", "focus.js", "trigger.js", "list.js", "menu-row.js", "open-in.js", "terminal-context.js", "surfaces.js", "panel.js", "submenu.js", "popup-menu.js", "titlebar.js", "review-git.js", "review-menu.js", "review-scope.js", "details-popup.js", "actions.js", "workspace-details.js", "review-details.js", "program.js", "dialog.js", "clean-up.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n").replace("const DISABLED = 0.64;", "const DISABLED = 0.64;\nconst drawButton = button;")
   .replace(/^import .*;\r?\n/gm, "").replace("export default class", "globalThis.Mod = class").replace(/^export (?=(?:async\s+)?function\b|const\b|class\b)/gm, "");
-// The handle holding the keyboard.
 let held = null;
 const cx = { notify() {}, stop_propagation() {}, spawn: (fn) => jobs.push(fn), focus_handle: () => { const h = { focus() { held = h; }, is_focused: () => held === h }; return h; }, timer: { every: () => ({ cancel() {} }), after: (_ms, f) => (f(cx), { cancel() {} }) } };
 const load = (props = {}) => {

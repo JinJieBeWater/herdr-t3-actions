@@ -1,6 +1,5 @@
 // A space's mark, as T3 Code's sidebar draws a project (ProjectFavicon): the project's own icon when it has
-// one, else a two-letter monogram tinted with a color its name picks. One rule, with a copy in each mod that
-// draws spaces or opens a tab in one (t3-inbox, t3-agents, t3-pane, t3-picker, t3-spaces, t3-new-menu, t3-tabs, t3-menu).
+// one, else a monogram tinted with a color its name picks.
 import { image, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { checking, exec, readTextFile, appHome, settings, shared, setShared, spaces, panes, run } from "herdr";
@@ -52,7 +51,7 @@ export function projectMark(mod, s, size, t, ps, follow) {
   if (!text) return h_flex().size(size).flex_none().items_center().justify_center()
     .child(svg(`${mod}/icons/folder.svg`).size(size).text_color(t.dim));
   const color = monogramColor(s.name, isDark(t));
-  // As T3's ProjectMonogram: the color on a 14% wash of itself, bold monospace at its 8.25 in a 16 tile.
+  // As T3's ProjectMonogram.
   return h_flex().size(size).flex_none().rounded(size / 4).bg(alpha(color, "24")).items_center().justify_center()
     .font_family(settings().font_family ?? "JetBrains Mono").font_bold().text_size(size * 8.25 / 16).text_color(color)
     .child(text);
@@ -127,7 +126,7 @@ function projectIcon(s, ps, follow) {
   if (!folder) return null;
   const key = iconKey(s, ps), icons = shared(KEY.spaceIcons) ?? {}, known = icons[key] ?? null;
   if (checking()) return known;
-  // As T3's cache: a found icon is looked for again after 10 minutes, a missing one after a minute.
+  // As T3's cache: a missing icon is looked for again sooner than a found one.
   const stale = !looked.has(key) || Date.now() - looked.get(key) > (known ? 600000 : 60000);
   if (stale && !(follow && key in icons)) {
     looked.set(key, Date.now());

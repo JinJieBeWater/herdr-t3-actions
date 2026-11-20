@@ -1,6 +1,5 @@
-// Actions, as T3 Code's run button: commands you start with one click, kept in shared state.
-// In a bar it draws "▶ Dev | ▾", sized to fit its block; the menu and the editor are this mod opened as overlays, and so
-// is Details (cmd-shift-b) with its menus: the control and menus are actions.js's, Details workspace-details.js's.
+// Actions, as T3 Code's run button: commands you start with one click, kept in shared state. In a bar it draws "▶ Dev | ▾";
+// the menu, the editor and Details (cmd-shift-b) are this mod opened as overlays.
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input } from "gpui-base";
 import { theme, run, openOverlay, closeOverlay, props, setShared, spaces, settings, nextCommand, shared } from "herdr";
@@ -60,7 +59,7 @@ function editorView(view) {
   const field = ([k, input]) => v_flex().gap(6).child(label({ name: "Name", command: "Command", cwd: "Folder (optional)" }[k]))
     .child(h_flex().h(32).px(11).rounded(8).border(1).border_color(t.border).bg(t.input).items_center()
       .child(Input.new(input).flex_1().h_full().text_size(14).text_color(t.foreground)));
-  // T3's sm toggle: 28 at least, with 6 either side of its words.
+  // T3's sm toggle.
   const choice = (id, on, pick, name, child) => stop(view, t, id, h_flex().id(id).h(28).min_w(28).px(6).rounded(8).items_center().justify_center().font_medium()
     .bg(on ? t.selected : t.input).text_color(lit(view, id, on ? t.foreground : t.dim)).on_hover(glow(view, id))
     .role("button").accessibility_label(name)
