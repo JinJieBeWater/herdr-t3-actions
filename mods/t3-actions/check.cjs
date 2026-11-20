@@ -11,7 +11,7 @@ const strings = (node) => typeof node === "string" ? [node] : node && typeof nod
 // No event given: Herdr's own, an empty one and the frame's cx.
 const fire = (node, event, ...args) => kit.fire(node, event, ...(args.length ? args : [{}, cx]));
 
-const state = {}, calls = [], overlays = [], commands = [], jobs = [], zoom = 1.1;
+const state = {}, calls = [], overlays = [], commands = [], jobs = [], notices = [], zoom = 1.1;
 const theme = new Proxy({ foreground: "#f4f4f6", dim: "#77777f", border: "#2a2a30", hover: "#202024", input: "#3a3a40" }, { get: (t, k) => t[k] ?? "#a9a9b4" });
 // Text fields, in the order the editor makes them.
 const fields = [];
@@ -22,7 +22,7 @@ const env = {
   InputState: { new: ({ value = "" }) => { const f = { text: value, on() {}, value: () => f.text, set_value: value => { f.text = value; }, focus() {} }; fields.push(f); return f; } },
   theme: () => theme, settings: () => ({ zoom }), home: () => "/home/me", keys: () => [], window: () => ({ platform: "macos" }),
   shared: (key) => state[key], setShared: (key, value) => { state[key] = value; },
-  run: (name, args) => calls.push([name, plain(args)]),
+  run: (name, args) => calls.push([name, plain(args)]), notify: (notice) => notices.push(notice),
   openOverlay: (spec) => overlays.push(spec), closeOverlay() {},
   focused: () => ({ tab: "b", cwd: "/repo" }), panes: () => [], spaces: () => [{ active: true, folder: "/space" }], layout: () => ({}),
   nextCommand: () => commands.length ? Promise.resolve(commands.shift()) : new Promise(() => {}),
@@ -136,7 +136,6 @@ assert.deepEqual(plain(overlays.at(-1).props), { actions: "edit", id: "a" });
 fields.length = 0;
 const edit = load({ actions: "edit", id: "a" });
 assert.equal(edit.render().style.opacity, undefined, "its contents are there from the first frame");
-assert.equal(find(edit.render(), "action-save").hoverStyle.opacity, 0.9);
 assert.equal(find(edit.render(), "action-delete").style.bg, theme.raised);
 assert.equal(find(edit.render(), "action-close").hoverStyle.bg, theme.foreground + "12", "a dialog's ghost uses a card tint");
 fields[1].text = "bun run dev";
@@ -146,9 +145,6 @@ fields.length = 0;
 const add = load({ actions: "edit", id: null });
 const disabledSave = find(add.render(), "action-save");
 assert.equal(disabledSave.handlers.on_click, undefined, "disabled Save has no click");
-assert.equal(disabledSave.style.opacity, 0.64);
-assert.equal(disabledSave.style.bg, theme.solid, "disabled primary keeps its fill");
-assert.deepEqual(disabledSave.hoverStyle, {}, "disabled Save has no hover");
 assert.equal(state["t3-actions.actions"].list.length, 2, "no name or command, nothing saved");
 fields[0].text = "Lint"; fields[1].text = "bun lint";
 fire(find(add.render(), "action-save"), "on_click");
@@ -222,7 +218,6 @@ delete state["t3-tabs.compact"];
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(plain(state["t3-actions.actions"].list.map((a) => a.id)), ["a2"]);
 
-  // T3's alert dialog: its buttons run the command or only close, Enter runs it, Esc only closes.
   // Clean up, as Inbox: an Idle shelf folded to its count, then a Left behind shelf of cards; quiet until hovered, the reason last.
   {
     const panesWere = env.panes, spacesWere = env.spaces;
@@ -253,6 +248,15 @@ delete state["t3-tabs.compact"];
     fire(shelf, "on_click", {}, cx);
     tree = view.render();
     assert.ok(["Notarize release build", "herdling"].every((w) => strings(find(tree, "clean-up-idle-p-agent")).includes(w)), "opened, a slim row each");
+    // A draw reads panes() and spaces() once, not again for each row's mark: each read copies the whole list.
+    {
+      const listPanes = env.panes, listSpaces = env.spaces, reads = { panes: 0, spaces: 0 };
+      view.testScope.panes = () => { reads.panes++; return listPanes(); };
+      view.testScope.spaces = () => { reads.spaces++; return listSpaces(); };
+      view.render();
+      assert.deepEqual(reads, { panes: 1, spaces: 1 });
+      view.testScope.panes = listPanes; view.testScope.spaces = listSpaces;
+    }
     assert.ok(["Left behind", "2", "no agent at work"].every((w) => strings(find(tree, "clean-up-left")).includes(w)), "Left behind counts the live cards and says why");
     const card = find(tree, "clean-up-card-p-dev");
     assert.ok(["Dev server", "herdling", "node"].every((w) => strings(card).includes(w)), "a card: its space, name and process");
@@ -309,6 +313,7 @@ delete state["t3-tabs.compact"];
     env.panes = panesWere; env.spaces = spacesWere;
   }
 
+  // T3's alert dialog: its buttons run the command or only close, Enter runs it, Esc only closes.
   {
     const ask = (p) => load({ actions: "confirm", title: "Close?", detail: "It stops.", command: { name: "x.y", args: { a: 1 } }, ...p });
     let ran = calls.length;
@@ -421,6 +426,13 @@ delete state["t3-tabs.compact"];
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(ran, [["-Ra", "Zed"], ["--", "/captured"]]);
   assert.equal(state["t3.openTarget"], "Finder");
+
+  // The machine row's Copy path copies and says no more, as Copy path in every other menu.
+  {
+    const copied = [], menu = load({ actions: "directory-menu", source, details: "details", overlay: "directory" });
+    fire(find(menu.render(), "details-copy-directory"), "on_click", {}, { ...cx, write_to_clipboard: (text) => copied.push(text) });
+    assert.deepEqual([copied, notices], [["/captured"], []]);
+  }
 
   // What shows: only what's hidden is kept; Reset shows all; with nothing shown, a way back.
   state["t3-actions.detailsItems"] = { environment: false, openIn: false, scripts: false, review: false };

@@ -41,7 +41,22 @@ function isDark(t) {
   return (n >> 16) * 0.299 + ((n >> 8) & 255) * 0.587 + (n & 255) * 0.114 < 128;
 }
 
-// `ps`: panes(), read once by the caller (each read copies every pane). `follow`: drawn beside a mod that keeps looking
+// Each list panes() gave, indexed once, as a draw asks about every space (tree.js byParent): each tab's first pane with a
+// folder, and what every mark of that draw reads alike, the known icons and the letters' font. Herdr gives a new list each
+// call, so a list never outlives its draw.
+const draws = new WeakMap();
+function drawOf(ps) {
+  let d = draws.get(ps);
+  if (!d) {
+    d = { first: new Map(), icons: undefined, font: undefined };
+    let i = 0;
+    for (const p of ps) { if (p.cwd && !d.first.has(p.tab)) d.first.set(p.tab, { i, cwd: p.cwd }); i++; }
+    draws.set(ps, d);
+  }
+  return d;
+}
+
+// `ps`: panes(), read once by the caller's draw (each read copies every pane). `follow`: drawn beside a mod that keeps looking
 // (t3-spaces, t3-inbox), so it asks only where no one has answered yet.
 export function projectMark(mod, s, size, t, ps, follow) {
   const icon = s && projectIcon(s, ps, follow);
@@ -53,7 +68,7 @@ export function projectMark(mod, s, size, t, ps, follow) {
   const color = monogramColor(s.name, isDark(t));
   // As T3's ProjectMonogram.
   return h_flex().size(size).flex_none().rounded(size / 4).bg(alpha(color, "24")).items_center().justify_center()
-    .font_family(settings().font_family ?? "JetBrains Mono").font_bold().text_size(size * 8.25 / 16).text_color(color)
+    .font_family(fontOf(ps)).font_bold().text_size(size * 8.25 / 16).text_color(color)
     .child(text);
 }
 
@@ -106,8 +121,11 @@ async function lookUp(on, dir) {
 
 // Where a space is now, as t3-spaces has it: its first terminal's live folder, else where it was made.
 export function placeOf(s, ps) {
-  const tabs = new Set((s.tabs ?? []).map((c) => c.id));
-  return ps?.find((p) => tabs.has(p.tab) && p.cwd)?.cwd || s.folder;
+  if (!ps) return s.folder;
+  const { first } = drawOf(ps);
+  let hit;
+  for (const c of s.tabs ?? []) { const f = first.get(c.id); if (f && (!hit || f.i < hit.i)) hit = f; }
+  return hit?.cwd || s.folder;
 }
 
 // A terminal tab where the space is now, as its mark and folder say: Herdr's tab.new alone starts where the space was made.
@@ -121,10 +139,12 @@ export const newTab = (s) => {
 const looked = new Map(); // [machine, folder] -> when this copy last looked
 const lastIcon = new Map(); // space -> its icon where it last had an answer
 const iconKey = (s, ps) => JSON.stringify([s.machine ?? null, placeOf(s, ps)]);
+const iconsOf = (ps) => (ps ? drawOf(ps).icons ??= shared(KEY.spaceIcons) ?? {} : shared(KEY.spaceIcons) ?? {});
+const fontOf = (ps) => (ps ? drawOf(ps).font ??= settings().font_family ?? "JetBrains Mono" : settings().font_family ?? "JetBrains Mono");
 function projectIcon(s, ps, follow) {
   const folder = placeOf(s, ps);
   if (!folder) return null;
-  const key = iconKey(s, ps), icons = shared(KEY.spaceIcons) ?? {}, known = icons[key] ?? null;
+  const key = iconKey(s, ps), icons = iconsOf(ps), known = icons[key] ?? null;
   if (checking()) return known;
   // As T3's cache: a missing icon is looked for again sooner than a found one.
   const stale = !looked.has(key) || Date.now() - looked.get(key) > (known ? 600000 : 60000);

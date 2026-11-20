@@ -25,11 +25,9 @@ const hovers = (view, id) => (over, cx) => {
   if (to !== view.hot) { view.hot = to; cx.notify(); }
 };
 
-// The space's own mark, as Inbox's cards wear it; a space already gone keeps a plain one.
-function mark(t, r, size) {
-  const s = spaces().find((x) => x.id === r.spaceId) ?? { id: r.spaceId, name: r.space, machine: r.machine };
-  return projectMark("mods/t3-actions", s, size, t, panes(), true);
-}
+// The space's own mark, as Inbox's cards wear it; a space already gone keeps a plain one. `all`, `ps`: spaces() and panes(),
+// read once a draw (each read copies them).
+const marker = (t, all, ps) => (r) => projectMark("mods/t3-actions", all.find((x) => x.id === r.spaceId) ?? { id: r.spaceId, name: r.space, machine: r.machine }, 16, t, ps, true);
 
 // As Inbox's shelf header: a dim label, its count, a chevron when it folds; what it implies at the right.
 /** @param {any} view @param {any} t @param {string} id @param {string} label @param {number} count
@@ -48,20 +46,20 @@ function shelfHead(view, t, id, label, count, { open = false, side = null, toggl
 }
 
 // What closes: Settled's slim row, its mark 40% until lit; a click goes there before you empty it.
-function idleRow(view, t, r, done) {
+function idleRow(view, t, r, done, mark) {
   const id = `clean-up-idle-${r.pane}`, lit = view.hot === id || within(view, [id]);
   return stop(view, t, id, h_flex().id(id).h(32).px(8).gap(10).items_center().rounded(6).cursor_pointer()
     .when(lit, (el) => el.bg(tint(t, "card", false)))
     .on_hover(hovers(view, id)).on_click(() => { done(); run(`t3-tabs.go-pane:${r.pane}`, {}); })
     .role("button").accessibility_label(`Go to ${r.name}`)
-    .child(div().flex_none().opacity(lit ? 1 : 0.4).child(mark(t, r, 16)))
+    .child(div().flex_none().opacity(lit ? 1 : 0.4).child(mark(r)))
     .child(div().flex_1().min_w(0).truncate().text_color(lit ? t.foreground : t.muted).child(r.name))
     .child(div().flex_none().text_size(12).text_color(t.dim).child(r.space)), 6);
 }
 
 // A program left behind, as Inbox's card: its space over its name, the process at the right where Stop comes on hover. A click goes
 // there; Stop stops it, no second question: a word, as the ×s elsewhere ask first while a program runs.
-function card(view, t, c, done) {
+function card(view, t, c, done, mark) {
   const id = `clean-up-card-${c.pane}`, stopId = `clean-up-stop-${c.pane}`;
   const lit = view.hot === id || view.hot === stopId || within(view, [id, stopId]);
   const corner = lit
@@ -76,7 +74,7 @@ function card(view, t, c, done) {
     .on_hover(hovers(view, id)).on_click(() => { done(); run(`t3-tabs.go-pane:${c.pane}`, {}); })
     .role("button").accessibility_label(`Go to ${c.name}`)
     .child(h_flex().h(20).gap(6).items_center().text_size(12).text_color(t.dim)
-      .child(mark(t, c, 16))
+      .child(mark(c))
       .child(div().flex_1().min_w(0).truncate().child(c.space))
       .when(Boolean(c.machine), (el) => el.child(svg("mods/t3-actions/icons/server.svg").size(12).flex_none().text_color(t.dim)).child(div().flex_none().child(c.machine)))
       .when(Boolean(corner), (el) => el.child(h_flex().h(20).min_w(20).flex_none().justify_end().items_center().child(corner))))
@@ -96,11 +94,11 @@ function litCard(view, cards) {
 
 export function cleanUpView(view) {
   const t = theme(), p = props() ?? {}, done = () => closeOverlay(p.overlay);
-  const ps = panes(), live = new Set(ps.map((x) => x.pane));
+  const ps = panes(), all = spaces(), mark = marker(t, all, ps), live = new Set(ps.map((x) => x.pane));
   // A row goes as its pane does: stopped here, or anywhere else; the counts and the spaces that close follow.
   const idle = (p.idle ?? []).filter((r) => live.has(r.pane)), cards = (p.cards ?? []).filter((c) => live.has(c.pane));
   const n = idle.length, idleSet = new Set(idle.map((r) => r.pane));
-  const closing = n ? spaces().filter((s) => {
+  const closing = n ? all.filter((s) => {
     const tabs = new Set((s.tabs ?? []).map((c) => c.id)), mine = ps.filter((x) => tabs.has(x.tab));
     return mine.length > 0 && mine.every((x) => idleSet.has(x.pane));
   }).map((s) => s.name) : [];
@@ -119,10 +117,10 @@ export function cleanUpView(view) {
     .child(v_flex().id("clean-up-body").px(16).gap(8).max_h(420).overflow_y_scrollbar()
       .when(n > 0, (el) => el.child(v_flex()
         .child(shelfHead(view, t, "clean-up-idle", "Idle", n, { open: view.openIdle, toggle, side: closing.length ? `closes ${cleanUpAnd(closing)}` : null }))
-        .when(view.openIdle, (el) => el.child(v_flex().gap(1).children(idle.map((r) => idleRow(view, t, r, done)))))))
+        .when(view.openIdle, (el) => el.child(v_flex().gap(1).children(idle.map((r) => idleRow(view, t, r, done, mark)))))))
       .when(cards.length > 0, (el) => el.child(v_flex()
         .child(shelfHead(view, t, "clean-up-left", "Left behind", cards.length, { side: "no agent at work" }))
-        .child(v_flex().gap(5).children(cards.map((c) => card(view, t, c, done)))))))
+        .child(v_flex().gap(5).children(cards.map((c) => card(view, t, c, done, mark)))))))
     // The reason last (P9), on a line of its own level with the title, clear of the buttons.
     .child(div().id("clean-up-note").px(24).pt(12).text_size(12).line_height("16px").text_color(t.dim)
       .child("Skips the tab you're on, and programs in the space you're in."))

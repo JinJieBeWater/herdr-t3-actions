@@ -60,7 +60,7 @@ export function initDetails(view, cx) {
   const source = props().source;
   // The Review row's range menu reads as Details opens, so its first opening has its counts.
   if (!checking() && detailsVisibility().review !== false) prefetchRange(cx);
-  view.machineName = source.machine || "This Mac";
+  view.machineName = source.machine || "This computer";
   view.targets = knownTargets() ?? ["Finder"];
   view.target = "Finder";
   if (!source.machine && window()?.platform === "macos") cx.spawn(async (cx) => {
@@ -121,7 +121,7 @@ export function openInMenu(view) {
 /** The machine row's right-click menu: its one item. */
 export function directoryMenu(view) {
   const t = theme(), p = props();
-  const copy = (_at, cx) => { cx.write_to_clipboard(p.source.folder ?? ""); closeOverlay(p.overlay); notify({ title: "Path copied", body: p.source.folder ?? "", level: "success" }); };
+  const copy = (_at, cx) => { cx.write_to_clipboard(p.source.folder ?? ""); closeOverlay(p.overlay); };
   return v_flex().id("details-directory-menu").p(4).bg(t.popover).track_focus(view.keys)
     .on_key_down(menuKeys(view, ["Copy path"], copy))
     .child(menuRow(view, t, "details-copy-directory", { at: [view, "at", 0], label: "Copy path", pick: (cx) => copy(0, cx) }));
