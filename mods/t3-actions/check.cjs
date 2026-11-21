@@ -24,12 +24,12 @@ const env = {
   shared: (key) => state[key], setShared: (key, value) => { state[key] = value; },
   run: (name, args) => calls.push([name, plain(args)]), notify: (notice) => notices.push(notice),
   openOverlay: (spec) => overlays.push(spec), closeOverlay() {},
-  focused: () => ({ tab: "b", cwd: "/repo" }), panes: () => [], spaces: () => [{ active: true, folder: "/space" }], layout: () => ({}),
+  focused: () => ({ tab: "b", cwd: "/repo" }), panes: () => [], spaces: () => [{ active: true, folder: "/space" }], agents: () => [], terminals: () => [], layout: () => ({}),
   nextCommand: () => commands.length ? Promise.resolve(commands.shift()) : new Promise(() => {}),
   // project.js stays out of the bundle (its tint() is button.js's name); Clean up only places its mark.
   projectMark: () => element("mark"),
 };
-const source = ["color.js", "button.js", "store.js", "tip.js", "measured-text.js", "focus.js", "trigger.js", "list.js", "menu-row.js", "open-in.js", "terminal-context.js", "surfaces.js", "panel.js", "submenu.js", "popup-menu.js", "titlebar.js", "review-git.js", "review-menu.js", "review-scope.js", "details-popup.js", "actions.js", "workspace-details.js", "review-details.js", "program.js", "dialog.js", "clean-up.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n").replace("const DISABLED = 0.64;", "const DISABLED = 0.64;\nconst drawButton = button;")
+const source = ["color.js", "button.js", "store.js", "tip.js", "measured-text.js", "focus.js", "trigger.js", "list.js", "menu-row.js", "open-in.js", "terminal-context.js", "surfaces.js", "panel.js", "submenu.js", "popup-menu.js", "titlebar.js", "review-git.js", "review-menu.js", "review-scope.js", "details-popup.js", "actions.js", "workspace-details.js", "review-details.js", "program.js", "tree.js", "dialog.js", "clean-up.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n").replace("const DISABLED = 0.64;", "const DISABLED = 0.64;\nconst drawButton = button;")
   .replace(/^import .*;\r?\n/gm, "").replace("export default class", "globalThis.Mod = class").replace(/^export (?=(?:async\s+)?function\b|const\b|class\b)/gm, "");
 let held = null;
 const cx = { notify() {}, stop_propagation() {}, spawn: (fn) => jobs.push(fn), focus_handle: () => { const h = { focus() { held = h; }, is_focused: () => held === h }; return h; }, timer: { every: () => ({ cancel() {} }), after: (_ms, f) => (f(cx), { cancel() {} }) } };
@@ -218,20 +218,32 @@ delete state["t3-tabs.compact"];
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(plain(state["t3-actions.actions"].list.map((a) => a.id)), ["a2"]);
 
-  // Clean up, as Inbox: an Idle shelf folded to its count, then a Left behind shelf of cards; quiet until hovered, the reason last.
+  // Clean up, as Inbox: Settled and Idle shells shelves folded to their counts, then a Left behind shelf of cards; quiet until hovered, the reason last.
   {
-    const panesWere = env.panes, spacesWere = env.spaces;
-    let live = [{ pane: "p-agent", tab: "t-h1" }, { pane: "p-dev", tab: "t-h2" }, { pane: "p-zsh", tab: "t-p" }, { pane: "p-sh", tab: "t-a" }];
+    const panesWere = env.panes, spacesWere = env.spaces, agentsWere = env.agents, termsWere = env.terminals;
+    const piProg = { key: "pi", name: "Pi", agent: true, tint: true, icon: "icons/pi.svg" };
+    let live = [
+      { pane: "p-agent", tab: "t-h1", terminal: "t-ag" },
+      { pane: "p-dev", tab: "t-h2", terminal: "t-dev" },
+      { pane: "p-zsh", tab: "t-p", terminal: "t-z" },
+      { pane: "p-sh", tab: "t-a", terminal: "t-sh" },
+    ];
+    let liveAgents = [{ address: "t-ag", status: "idle", tab: "t-h1" }];
+    let liveTerms = [{ address: "t-ag", state: "live", status: "idle", turn: 2, labels: { settled: "1:2" } }];
     env.panes = () => live;
+    env.agents = () => liveAgents;
+    env.terminals = () => liveTerms;
     env.spaces = () => [
       { id: "s-h", name: "herdling", tabs: [{ id: "t-h1" }, { id: "t-h2" }] },
       { id: "s-p", name: "pulls.review", tabs: [{ id: "t-p" }] },
       { id: "s-a", name: "api", tabs: [{ id: "t-a" }] },
     ];
-    const open = (p) => load({ actions: "clean-up", command: { name: "t3-tabs.cleanup-now:1" },
-      idle: [
-        { pane: "p-agent", name: "Notarize release build", space: "herdling", spaceId: "s-h", machine: null, program: null },
-        { pane: "p-zsh", name: "zsh", space: "pulls.review", spaceId: "s-p", machine: null, program: null },
+    const open = (p) => load({ actions: "clean-up", overlay: "cu-main", command: { name: "t3-tabs.cleanup-now:1" },
+      settled: [
+        { pane: "p-agent", terminal: "t-ag", name: "Notarize release build", space: "herdling", spaceId: "s-h", machine: null, program: piProg },
+      ],
+      shells: [
+        { pane: "p-zsh", terminal: "t-z", name: "zsh", space: "pulls.review", spaceId: "s-p", machine: null, program: null },
       ],
       cards: [
         { pane: "p-dev", name: "Dev server", space: "herdling", spaceId: "s-h", machine: null, process: "node", program: null },
@@ -239,15 +251,112 @@ delete state["t3-tabs.compact"];
         { pane: "p-gone", name: "Old", space: "api", spaceId: "s-a", machine: null, process: "vite", program: null },
       ], ...p });
     let view = open();
+    const closedOverlays = [];
+    view.testScope.closeOverlay = (id) => closedOverlays.push(id);
     let tree = view.render();
     assert.ok(strings(tree).includes("Clean up"), "the title is the act; counts are the shelves'");
     assert.ok(!strings(tree).some((w) => /idle terminals?\?/.test(w)), "no title repeating the shelf");
-    const shelf = find(tree, "clean-up-idle");
-    assert.ok(["Idle", "2", "closes pulls.review"].every((w) => strings(shelf).includes(w)), "Idle, its count and the spaces that go");
-    assert.equal(find(tree, "clean-up-idle-p-agent"), null, "folded until opened");
-    fire(shelf, "on_click", {}, cx);
+    const settledShelf = find(tree, "clean-up-settled");
+    const shellsShelf = find(tree, "clean-up-shells");
+    assert.ok(["Settled", "1"].every((w) => strings(settledShelf).includes(w)), "Settled shelf with count");
+    assert.ok(["Idle shells", "1", "closes pulls.review"].every((w) => strings(shellsShelf).includes(w)), "Idle shells shelf, its count and the spaces it closes");
+    assert.equal(find(tree, "clean-up-settled-p-agent"), null, "Settled folded until opened");
+    assert.equal(find(tree, "clean-up-shell-p-zsh"), null, "Idle shells folded until opened");
+    // Both shelves non-empty: per-shelf Close buttons shown in one 54px column, footer says "Close all 2".
+    const closeSettledBtn = find(tree, "clean-up-close-settled");
+    const closeShellsBtn = find(tree, "clean-up-close-shells");
+    assert.ok(closeSettledBtn && strings(closeSettledBtn).includes("Close"), "per-shelf Close on Settled when both shelves exist");
+    assert.equal(closeSettledBtn.style.accessibility_label, "Close 1 settled agent");
+    assert.equal(closeSettledBtn.style.w, 54, "Settled shelf Close uses fixed 54px width");
+    assert.ok(closeShellsBtn && strings(closeShellsBtn).includes("Close"), "per-shelf Close on Idle shells when both shelves exist");
+    assert.equal(closeShellsBtn.style.accessibility_label, "Close 1 idle shell");
+    assert.equal(closeShellsBtn.style.w, 54, "Idle shells shelf Close uses fixed 54px width");
+    assert.ok(strings(find(tree, "clean-up-yes")).includes("Close all 2"), "footer says Close all when both shelves exist");
+    // Both per-shelf Close buttons run immediately on first click without closing Clean up or toggling fold.
+    let ran = calls.length;
+    let stopped = 0;
+    const stopCx = { ...cx, stop_propagation: () => { stopped++; } };
+    fire(closeSettledBtn, "on_click", {}, stopCx);
+    assert.equal(view.armed, undefined, "Clean up has no arming state");
+    assert.deepEqual(calls.slice(ran), [["t3-tabs.cleanup-now:1:settled", {}]], "first click on Settled shelf Close runs scoped command immediately");
+    assert.equal(closedOverlays.length, 0, "Settled shelf Close keeps Clean up open");
+    assert.equal(stopped, 1, "Settled shelf Close stops propagation on click");
+    assert.deepEqual([view.openSettled, view.openShells], [false, false], "Settled shelf Close does not toggle shelf fold");
+    ran = calls.length;
+    fire(find(view.render(), "clean-up-close-shells"), "on_click", {}, stopCx);
+    assert.deepEqual(calls.slice(ran), [["t3-tabs.cleanup-now:1:shells", {}]], "Idle shells shelf Close runs immediately on first click");
+    assert.equal(closedOverlays.length, 0, "Idle shells shelf Close keeps Clean up open");
+    assert.deepEqual([view.openSettled, view.openShells], [false, false], "per-shelf Close does not toggle shelf fold");
+
+    // Expand both shelves and inspect slim rows: fixed columns [mark, icon, name, meta, Close] never shift on hover.
+    const shapeOf = (el) => el.items.map((n) => (typeof n === "string" ? "text" : `${n.kind}:${n.key ?? ""}`));
+    fire(settledShelf, "on_click", {}, cx);
+    fire(shellsShelf, "on_click", {}, cx);
     tree = view.render();
-    assert.ok(["Notarize release build", "herdling"].every((w) => strings(find(tree, "clean-up-idle-p-agent")).includes(w)), "opened, a slim row each");
+    const settledRow = find(tree, "clean-up-settled-p-agent");
+    const shellRow = find(tree, "clean-up-shell-p-zsh");
+    assert.ok(["Notarize release build", "herdling", "Close"].every((w) => strings(settledRow).includes(w)), "opened settled row shows name, space and Close at rest");
+    assert.equal(settledRow.items[0].items[0].kind, "mark", "column 1 is space mark");
+    assert.ok(settledRow.items[1].items.some((c) => c?.kind === "svg" && c.source === "icons/pi.svg"), "column 2 is agent program icon right after space mark");
+    assert.deepEqual(strings(settledRow.items[2]), ["Notarize release build"], "column 3 is pane name");
+    assert.deepEqual(strings(settledRow.items[3]), ["herdling"], "column 4 is space metadata");
+    assert.equal(settledRow.items[4].key, "clean-up-close-pane-p-agent", "column 5 is always-visible Close button");
+    assert.equal(settledRow.items[4].style.accessibility_label, "Close Notarize release build");
+    assert.equal(settledRow.items[4].style.text_color, theme.dim, "row Close is quiet dim at rest");
+    assert.equal(settledRow.items[4].style.w, 54, "Settled row Close uses fixed 54px width");
+    assert.ok(["zsh", "pulls.review", "Close"].every((w) => strings(shellRow).includes(w)), "opened shell row shows name, space and Close at rest");
+    assert.ok(shellRow.items[1].items.some((c) => c?.kind === "svg" && c.source === "mods/t3-actions/icons/terminal.svg"), "shell row column 2 is terminal icon");
+    assert.equal(shellRow.items[4].key, "clean-up-close-pane-p-zsh", "shell row column 5 is always-visible Close button");
+    assert.equal(shellRow.items[4].style.w, 54, "Idle shells row Close uses fixed 54px width");
+
+    // Per-row hover keeps identical child structure (zero reflow) and tracks overRow separately from hot; every row Close and Ctrl+D executes immediately.
+    const restRowShape = shapeOf(settledRow);
+    const restRowStrings = strings(settledRow);
+    assert.equal(settledRow.style.bg, undefined, "row has no fill at rest");
+    fire(settledRow, "on_hover", true, cx);
+    tree = view.render();
+    const litSettledRow = find(tree, "clean-up-settled-p-agent");
+    const rowCloseBtn = find(tree, "clean-up-close-pane-p-agent");
+    assert.equal(litSettledRow.style.bg, theme.foreground + "12", "hover lights row fill");
+    assert.deepEqual(shapeOf(litSettledRow), restRowShape, "hovering row never adds, removes or reorders children");
+    assert.deepEqual(strings(litSettledRow), restRowStrings, "hovering row keeps space metadata visible alongside Close");
+    assert.equal(rowCloseBtn.style.text_color, theme.dim, "row hover alone keeps Close dim");
+    fire(rowCloseBtn, "on_hover", true, cx);
+    tree = view.render();
+    assert.equal(view.hot, "clean-up-close-pane-p-agent");
+    assert.equal(find(tree, "clean-up-close-pane-p-agent").style.text_color, theme.foreground, "hovering Close brightens it");
+    assert.deepEqual(shapeOf(find(tree, "clean-up-settled-p-agent")), restRowShape, "hovering Close never changes row structure");
+    fire(rowCloseBtn, "on_hover", false, cx);
+    tree = view.render();
+    assert.equal(view.hot, null, "leaving Close clears button hot");
+    assert.equal(find(tree, "clean-up-settled-p-agent").style.bg, theme.foreground + "12", "row stays lit while pointer is still on row");
+    assert.equal(find(tree, "clean-up-close-pane-p-agent").style.text_color, theme.dim, "leaving Close dims it back");
+    ran = calls.length;
+    fire(find(tree, "clean-up-close-pane-p-agent"), "on_click", {}, stopCx);
+    assert.deepEqual(calls.slice(ran), [["t3-tabs.cleanup-now:1:pane:p-agent", {}]], "first click on Settled row Close runs single-pane cleanup immediately");
+    assert.equal(closedOverlays.length, 0, "row Close keeps Clean up open");
+    ran = calls.length;
+    fire(find(view.render(), "clean-up-close-pane-p-zsh"), "on_click", {}, stopCx);
+    assert.deepEqual(calls.slice(ran), [["t3-tabs.cleanup-now:1:pane:p-zsh", {}]], "Idle shells row Close runs immediately on first click");
+    // Ctrl+D on lit Settled or Idle shells row closes immediately on first press.
+    tree = view.render();
+    ran = calls.length;
+    fire(find(tree, "action-clean-up"), "on_key_down", { key: "d", modifiers: { control: true } }, cx);
+    assert.deepEqual(calls.slice(ran), [["t3-tabs.cleanup-now:1:pane:p-agent", {}]], "first Ctrl+D closes lit Settled row immediately");
+    fire(find(view.render(), "clean-up-settled-p-agent"), "on_hover", false, cx);
+    fire(find(view.render(), "clean-up-shell-p-zsh"), "on_hover", true, cx);
+    ran = calls.length;
+    fire(find(view.render(), "action-clean-up"), "on_key_down", { key: "d", modifiers: { control: true } }, cx);
+    assert.deepEqual(calls.slice(ran), [["t3-tabs.cleanup-now:1:pane:p-zsh", {}]], "Ctrl+D closes lit Idle shells row immediately");
+    // Folding a shelf prevents Ctrl+D from targeting a hidden row.
+    fire(find(view.render(), "clean-up-shells"), "on_click", {}, cx);
+    ran = calls.length;
+    fire(find(view.render(), "action-clean-up"), "on_key_down", { key: "d", modifiers: { control: true } }, cx);
+    assert.deepEqual(calls.slice(ran), [], "Ctrl+D ignores rows in a folded shelf");
+    view.overRow = null;
+    fire(find(view.render(), "clean-up-shells"), "on_click", {}, cx);
+    tree = view.render();
+
     // A draw reads panes() and spaces() once, not again for each row's mark: each read copies the whole list.
     {
       const listPanes = env.panes, listSpaces = env.spaces, reads = { panes: 0, spaces: 0 };
@@ -259,58 +368,247 @@ delete state["t3-tabs.compact"];
     }
     assert.ok(["Left behind", "2", "no agent at work"].every((w) => strings(find(tree, "clean-up-left")).includes(w)), "Left behind counts the live cards and says why");
     const card = find(tree, "clean-up-card-p-dev");
-    assert.ok(["Dev server", "herdling", "node"].every((w) => strings(card).includes(w)), "a card: its space, name and process");
+    assert.ok(["Dev server", "herdling", "node", "Stop"].every((w) => strings(card).includes(w)), "a card: its space, process, Stop and name at rest");
     assert.equal(card.style.border, undefined, "quiet at rest: no outline, only a faint fill");
     const same = open({ cards: [{ pane: "p-dev", name: "sleep", space: "herdling", spaceId: "s-h", machine: null, process: "sleep", program: null }] }).render();
     assert.equal(strings(find(same, "clean-up-card-p-dev")).filter((w) => w === "sleep").length, 1, "a process its name already says isn't said twice");
     assert.ok(["vps", "api"].every((w) => strings(find(tree, "clean-up-card-p-sh")).includes(w)), "a remote one names its machine");
     assert.equal(find(tree, "clean-up-card-p-gone"), null, "a pane that's gone leaves Clean up");
-    assert.equal(find(tree, "clean-up-stop-p-dev"), null, "Stop only on hover");
+    const restStopBtn = find(tree, "clean-up-stop-p-dev");
+    assert.ok(restStopBtn && strings(restStopBtn).includes("Stop"), "Stop is rendered at rest alongside process");
+    assert.equal(restStopBtn.style.accessibility_label, "Stop Dev server");
+    assert.equal(restStopBtn.style.text_color, theme.dim, "Stop is quiet dim at rest");
+    assert.equal(restStopBtn.style.w, 54, "Left behind Stop uses fixed 54px width");
+    const restCardShapes = card.items.map(shapeOf);
+    const restCardStrings = strings(card);
     view.hot = "clean-up-card-p-dev";
     tree = view.render();
+    const litCard = find(tree, "clean-up-card-p-dev");
     const stopButton = find(tree, "clean-up-stop-p-dev");
-    assert.ok(strings(stopButton).includes("Stop"), "a word, not the ×s that ask first elsewhere: it stops at once");
-    assert.ok(!strings(find(tree, "clean-up-card-p-dev")).includes("node"), "hovered, Stop takes the process's place");
-    let ran = calls.length;
-    fire(stopButton, "on_click", {}, cx);
-    assert.deepEqual(calls.slice(ran), [["t3-tabs.stop-pane:p-dev", {}]], "Stop stops it at once, no second question, and doesn't go there");
-    // Ctrl+D, as Go to's and the space menu's: the card under the pointer or holding the keyboard; with none, nothing.
+    assert.ok(strings(stopButton).includes("Stop"), "a word, not the ×s that ask first elsewhere");
+    assert.deepEqual(litCard.items.map(shapeOf), restCardShapes, "hovering card never adds, removes or reorders children");
+    assert.deepEqual(strings(litCard), restCardStrings, "hovering card keeps process visible alongside Stop");
+    // Left behind Stop executes immediately on first click without going there.
     ran = calls.length;
-    fire(find(tree, "action-clean-up"), "on_key_down", { key: "d", modifiers: { control: true } }, cx);
+    fire(stopButton, "on_click", {}, cx);
+    assert.deepEqual(calls.slice(ran), [["t3-tabs.stop-pane:p-dev", {}]], "first click on Stop runs stop-pane immediately and doesn't go there");
+    assert.equal(closedOverlays.length, 0, "Stop keeps Clean up open");
+    // Ctrl+D on lit Left behind card stops immediately on first press; with none lit, nothing.
+    ran = calls.length;
+    fire(find(view.render(), "action-clean-up"), "on_key_down", { key: "d", modifiers: { control: true } }, cx);
     view.hot = null;
     fire(find(view.render(), "action-clean-up"), "on_key_down", { key: "d", modifiers: { control: true } }, cx);
-    assert.deepEqual(calls.slice(ran), [["t3-tabs.stop-pane:p-dev", {}]], "Ctrl+D stops the lit card, and only that");
-    // Counts follow what's live: Dev server gone, herdling goes whole too; zsh gone, so does its count.
+    assert.deepEqual(calls.slice(ran), [["t3-tabs.stop-pane:p-dev", {}]], "first Ctrl+D stops the lit card, and only that");
+    // Counts follow what's live: Dev server gone, herdling goes whole on Settled; zsh gone -> only Settled remains, its shelf Close stays, footer says "Close 1".
     live = live.filter((x) => x.pane !== "p-dev");
     tree = view.render();
-    assert.ok(strings(find(tree, "clean-up-idle")).includes("closes herdling and pulls.review"), "a space emptied since it opened closes too");
+    assert.ok(strings(find(tree, "clean-up-settled")).includes("closes herdling"), "a space emptied since it opened closes on its shelf");
+    assert.ok(!strings(find(tree, "clean-up-note")).some((w) => w.startsWith("Closes ")), "note doesn't repeat spaces already named on individual shelves");
     live = live.filter((x) => x.pane !== "p-zsh");
     tree = view.render();
-    assert.ok(["1", "closes herdling"].every((w) => strings(find(tree, "clean-up-idle")).includes(w)), "the count is the live rows'");
-    assert.ok(strings(find(tree, "clean-up-yes")).includes("Close 1"));
-    live = [{ pane: "p-agent", tab: "t-h1" }, { pane: "p-dev", tab: "t-h2" }, { pane: "p-zsh", tab: "t-p" }, { pane: "p-sh", tab: "t-a" }];
+    assert.equal(find(tree, "clean-up-shells"), null, "empty Idle shells shelf disappears");
+    assert.ok(find(tree, "clean-up-close-settled"), "Settled shelf Close stays present even when only Settled remains");
+    assert.ok(["1", "closes herdling", "Close"].every((w) => strings(find(tree, "clean-up-settled")).includes(w)), "the count, closes note and Close button stay on the remaining shelf");
+    assert.ok(strings(find(tree, "clean-up-yes")).includes("Close 1"), "single shelf uses Close <n> instead of Close all <n>");
+
+    // Combined closing-spaces summary: when a space holds both a settled agent and an idle shell, only closing both empties it -> named in clean-up-note.
+    {
+      const savedPanes = env.panes, savedSpaces = env.spaces;
+      env.panes = () => [
+        { pane: "p-agent", tab: "t-m1", terminal: "t-ag" },
+        { pane: "p-zsh", tab: "t-m2", terminal: "t-z" },
+        { pane: "p-only-sh", tab: "t-o1", terminal: "t-osh" },
+      ];
+      env.spaces = () => [
+        { id: "s-mix", name: "mixed", tabs: [{ id: "t-m1" }, { id: "t-m2" }] },
+        { id: "s-only", name: "shells-only", tabs: [{ id: "t-o1" }] },
+      ];
+      const mixView = open({
+        settled: [{ pane: "p-agent", terminal: "t-ag", name: "Agent", space: "mixed", spaceId: "s-mix", machine: null, program: piProg }],
+        shells: [
+          { pane: "p-zsh", terminal: "t-z", name: "zsh", space: "mixed", spaceId: "s-mix", machine: null, program: null },
+          { pane: "p-only-sh", terminal: "t-osh", name: "zsh", space: "shells-only", spaceId: "s-only", machine: null, program: null },
+        ],
+        cards: [],
+      });
+      const mixTree = mixView.render();
+      assert.ok(!strings(find(mixTree, "clean-up-settled")).some((w) => w.startsWith("closes")), "Settled alone doesn't empty mixed");
+      assert.ok(strings(find(mixTree, "clean-up-shells")).includes("closes shells-only"), "Idle shells alone empties shells-only");
+      assert.equal(find(mixTree, "clean-up-close-shells").style.accessibility_label, "Close 2 idle shells");
+      assert.ok(strings(find(mixTree, "clean-up-note")).includes("Closes mixed and shells-only. Skips the tab you're on, and programs in the space you're in."),
+        "combined closing spaces appear in clean-up-note when closing both empties additional spaces");
+      env.panes = savedPanes; env.spaces = savedSpaces;
+    }
+
+    live = [
+      { pane: "p-agent", tab: "t-h1", terminal: "t-ag" },
+      { pane: "p-dev", tab: "t-h2", terminal: "t-dev" },
+      { pane: "p-zsh", tab: "t-p", terminal: "t-z" },
+      { pane: "p-sh", tab: "t-a", terminal: "t-sh" },
+    ];
     tree = view.render();
     ran = calls.length;
     fire(find(tree, "clean-up-card-p-dev"), "on_click", {}, cx);
-    fire(find(tree, "clean-up-idle-p-agent"), "on_click", {}, cx);
+    fire(find(tree, "clean-up-settled-p-agent"), "on_click", {}, cx);
     assert.deepEqual(calls.slice(ran), [["t3-tabs.go-pane:p-dev", {}], ["t3-tabs.go-pane:p-agent", {}]], "a card or row goes there");
     const note = find(tree, "clean-up-note");
     assert.ok(strings(note).includes("Skips the tab you're on, and programs in the space you're in."), "both scopes, last");
     assert.equal(note.style.px, 24, "a line of its own, level with the title, not squeezed beside the buttons");
     assert.ok(!strings(find(tree, "clean-up-footer")).some((w) => w.startsWith("Skips")), "the footer holds only the buttons, as T3's alert");
     const yes = find(tree, "clean-up-yes");
-    assert.ok(strings(yes).includes("Close 2"));
+    assert.ok(strings(yes).includes("Close all 2"));
     ran = calls.length;
+    closedOverlays.length = 0;
     fire(yes, "on_click", {}, cx);
     fire(find(tree, "action-clean-up"), "on_key_down", { key: "escape" }, cx);
+    assert.deepEqual(closedOverlays, ["cu-main", "cu-main"], "Close all and Esc close the dialog immediately");
     fire(find(tree, "action-clean-up"), "on_key_down", { key: "enter" }, cx);
-    assert.deepEqual(calls.slice(ran), [["t3-tabs.cleanup-now:1", {}], ["t3-tabs.cleanup-now:1", {}]], "Close and Enter empty it; Esc doesn't");
-    // Only programs left behind: no Idle shelf, nothing to empty, the cards still there.
-    tree = open({ idle: [], command: null }).render();
-    assert.deepEqual([find(tree, "clean-up-idle"), find(tree, "clean-up-yes")], [null, null]);
+    assert.deepEqual(calls.slice(ran), [["t3-tabs.cleanup-now:1", {}], ["t3-tabs.cleanup-now:1", {}]], "Close all and Enter empty it; Esc doesn't");
+    // Only programs left behind: neither Settled nor Idle shells shelf, nothing to empty, the cards still there.
+    tree = open({ settled: [], shells: [], command: null }).render();
+    assert.deepEqual([find(tree, "clean-up-settled"), find(tree, "clean-up-shells"), find(tree, "clean-up-yes")], [null, null, null]);
     assert.ok(strings(find(tree, "clean-up-no")).includes("Done"));
     assert.ok(find(tree, "clean-up-card-p-dev"));
-    env.panes = panesWere; env.spaces = spacesWere;
+
+    // Live-filter settled & shell rows: newly focused tab, unsettled agent, busy sub-agent, exited agent, or replaced terminal drop immediately.
+    {
+      const focusedWere = env.focused;
+      let focusNow = { tab: "b" };
+      let livePanes = [
+        { pane: "p-agent", tab: "t-h1", terminal: "t-ag" },
+        { pane: "p-zsh", tab: "t-p", terminal: "t-z" },
+        { pane: "p-dev", tab: "t-h2", terminal: "t-dev" },
+      ];
+      let ags = [{ address: "t-ag", status: "idle", tab: "t-h1" }];
+      let terms = [{ address: "t-ag", state: "live", status: "idle", turn: 2, labels: { settled: "1:2" } }];
+      env.panes = () => livePanes;
+      env.agents = () => ags;
+      env.terminals = () => terms;
+      env.focused = () => focusNow;
+      const v = open({
+        overlay: "cu-live",
+        settled: [{ pane: "p-agent", terminal: "t-ag", name: "Notarize", space: "herdling", spaceId: "s-h", machine: null, program: piProg }],
+        shells: [{ pane: "p-zsh", terminal: "t-z", name: "zsh", space: "pulls.review", spaceId: "s-p", machine: "vps", program: null }],
+        cards: [{ pane: "p-dev", name: "Dev server", space: "herdling", spaceId: "s-h", machine: null, process: "node", program: null }],
+      });
+      let tr = v.render(cx);
+      assert.ok(strings(find(tr, "clean-up-settled")).includes("1") && strings(find(tr, "clean-up-shells")).includes("1"), "both shelves live while settled and unfocused");
+      // Shelf head right-side note truncates right-aligned instead of overflowing with flex_none.
+      const shellsItems = find(tr, "clean-up-shells").items;
+      const side = shellsItems.find((el) => el?.items?.includes?.("closes pulls.review"));
+      assert.deepEqual([Boolean(side.style.flex_1), side.style.min_w, Boolean(side.style.truncate), Boolean(side.style.text_right), side.style.flex_none],
+        [true, 0, true, true, undefined], "closes note shrinks and truncates cleanly inside 512px");
+      // Shell row shows remote machine + server.svg and caps space width before the fixed Close button.
+      fire(find(tr, "clean-up-shells"), "on_click", {}, cx);
+      tr = v.render(cx);
+      const remoteRow = find(tr, "clean-up-shell-p-zsh");
+      assert.ok(strings(remoteRow).includes("vps"), "shell row names its remote machine");
+      const meta = remoteRow.items.at(-2);
+      assert.equal(remoteRow.items.at(-1).key, "clean-up-close-pane-p-zsh", "shell row Close button sits fixed at the right end");
+      assert.equal(meta.style.max_w, 180, "shell row metadata capped so space cannot crush name");
+      assert.ok(meta.items.some((el) => el?.kind === "svg" && el.source === "mods/t3-actions/icons/server.svg"), "shell row draws server.svg for remote machine");
+      assert.deepEqual([meta.items[0].style.min_w, Boolean(meta.items[0].style.truncate)], [0, true], "shell row space truncates");
+      // Settled agent becomes working -> dropped from Settled immediately; Idle shells keeps its shelf Close button.
+      ags = [{ address: "t-ag", status: "working", tab: "t-h1" }];
+      tr = v.render(cx);
+      assert.equal(find(tr, "clean-up-settled"), null, "unsettled agent drops from Settled");
+      assert.ok(find(tr, "clean-up-close-shells"), "Idle shells shelf Close stays present even when only Idle shells remains");
+      assert.ok(strings(find(tr, "clean-up-yes")).includes("Close 1"), "footer falls back to Close 1");
+      // Agent back to settled, but its sub-agent becomes blocked -> still dropped.
+      ags = [{ address: "t-ag", status: "idle", tab: "t-h1" }];
+      terms = [
+        { address: "t-ag", state: "live", status: "idle", turn: 2, labels: { settled: "1:2" } },
+        { address: "t-kid", parent: "t-ag", state: "live", status: "blocked" },
+      ];
+      tr = v.render(cx);
+      assert.equal(find(tr, "clean-up-settled"), null, "agent with busy sub-agent drops from Settled");
+      // Agent removed from agents() -> dropped from Settled.
+      ags = [];
+      terms = [{ address: "t-ag", state: "live", status: "idle", turn: 2, labels: { settled: "1:2" } }];
+      tr = v.render(cx);
+      assert.equal(find(tr, "clean-up-settled"), null, "agent no longer in agents() drops from Settled");
+      // Restore agent; shell's tab becomes focused -> shell drops from Idle shells.
+      ags = [{ address: "t-ag", status: "idle", tab: "t-h1" }];
+      focusNow = { tab: "t-p" };
+      tr = v.render(cx);
+      assert.ok(find(tr, "clean-up-settled") && !find(tr, "clean-up-shells"), "focused shell tab drops from Idle shells");
+      // Terminal replaced in pane -> drops from Settled too.
+      livePanes = [{ pane: "p-agent", tab: "t-h1", terminal: "t-new" }, { pane: "p-dev", tab: "t-h2", terminal: "t-dev" }];
+      tr = v.render(cx);
+      assert.equal(find(tr, "clean-up-settled"), null, "replaced terminal drops from Settled");
+      env.focused = focusedWere;
+    }
+
+    // Card hover tracks view.overCard separately from Stop's view.hot: moving across card and Stop keeps card lit with zero structural change.
+    {
+      env.panes = () => live;
+      env.agents = () => liveAgents;
+      env.terminals = () => liveTerms;
+      const v = open();
+      let tr = v.render(cx);
+      const restCard = find(tr, "clean-up-card-p-dev");
+      const restShape = restCard.items.map(shapeOf);
+      assert.ok(find(tr, "clean-up-stop-p-dev"), "Stop is already present at rest");
+      assert.equal(restCard.style.bg, theme.foreground + "0a", "card has rest fill");
+      fire(restCard, "on_hover", true, cx);
+      tr = v.render(cx);
+      assert.equal(find(tr, "clean-up-card-p-dev").style.bg, theme.foreground + "12", "entering card lights its fill");
+      assert.deepEqual(find(tr, "clean-up-card-p-dev").items.map(shapeOf), restShape, "entering card keeps identical child structure");
+      assert.ok(strings(find(tr, "clean-up-card-p-dev")).includes("node"), "entering card keeps process visible");
+      fire(find(tr, "clean-up-stop-p-dev"), "on_hover", true, cx);
+      tr = v.render(cx);
+      assert.equal(v.hot, "clean-up-stop-p-dev");
+      assert.equal(find(tr, "clean-up-stop-p-dev").style.text_color, theme.foreground, "hovering Stop brightens it");
+      assert.equal(find(tr, "clean-up-card-p-dev").style.bg, theme.foreground + "12", "card stays lit while Stop is hovered");
+      fire(find(tr, "clean-up-stop-p-dev"), "on_hover", false, cx);
+      tr = v.render(cx);
+      assert.equal(v.hot, null, "leaving Stop clears Stop's hot");
+      assert.equal(find(tr, "clean-up-stop-p-dev").style.text_color, theme.dim, "leaving Stop dims it back");
+      assert.equal(find(tr, "clean-up-card-p-dev").style.bg, theme.foreground + "12", "card stays lit while pointer is still on card");
+      const before = calls.length;
+      fire(find(tr, "action-clean-up"), "on_key_down", { key: "d", modifiers: { control: true } }, cx);
+      assert.deepEqual(calls.slice(before), [["t3-tabs.stop-pane:p-dev", {}]], "Ctrl+D immediately targets the hovered card");
+      fire(find(tr, "clean-up-card-p-dev"), "on_hover", false, cx);
+      tr = v.render(cx);
+      assert.equal(find(tr, "clean-up-card-p-dev").style.bg, theme.foreground + "0a", "leaving card restores rest fill");
+      assert.ok(find(tr, "clean-up-stop-p-dev"), "leaving card keeps Stop rendered");
+      assert.deepEqual(find(tr, "clean-up-card-p-dev").items.map(shapeOf), restShape, "leaving card keeps identical child structure");
+    }
+
+    // Auto-close when all items disappear (e.g. last Left behind card stopped): schedules closeOverlay once via cx.timer.after(0).
+    {
+      let remaining = [{ pane: "p-dev", tab: "t-h2" }];
+      env.panes = () => remaining;
+      const closed = [], scheduled = [];
+      const deferCx = { ...cx, timer: { ...cx.timer, after: (ms, f) => { scheduled.push({ ms, f }); return { cancel() {} }; } } };
+      const v = open({ overlay: "cu-auto", settled: [], shells: [], command: null, cards: [{ pane: "p-dev", name: "Dev server", space: "herdling", spaceId: "s-h", machine: null, process: "node", program: null }] });
+      v.testScope.closeOverlay = (id) => closed.push(id);
+      v.render(deferCx);
+      assert.deepEqual([scheduled.length, closed.length], [0, 0], "stays open while an item remains");
+      remaining = [];
+      v.render(deferCx);
+      v.render(deferCx);
+      assert.equal(scheduled.length, 1, "schedules auto-close once");
+      assert.equal(scheduled[0].ms, 0);
+      assert.equal(closed.length, 0, "doesn't close synchronously during render");
+      scheduled[0].f(deferCx);
+      assert.deepEqual(closed, ["cu-auto"], "auto-closes the overlay");
+    }
+
+    // Enter when total === 0 closes the dialog (matching the sole Done button) and never runs a stale cleanup command.
+    {
+      env.panes = () => [{ pane: "p-dev", tab: "t-h2" }];
+      const closed = [];
+      const v = open({ overlay: "cu-enter", settled: [], shells: [{ pane: "p-gone-idle", name: "zsh", space: "api", spaceId: "s-a", machine: null, program: null }], command: { name: "t3-tabs.cleanup-now:9" },
+        cards: [{ pane: "p-dev", name: "Dev server", space: "herdling", spaceId: "s-h", machine: null, process: "node", program: null }] });
+      v.testScope.closeOverlay = (id) => closed.push(id);
+      const tr = v.render(cx);
+      const before = calls.length;
+      fire(find(tr, "action-clean-up"), "on_key_down", { key: "enter" }, cx);
+      assert.deepEqual([closed, calls.slice(before)], [["cu-enter"], []], "Enter closes when total === 0 and runs no command");
+    }
+
+    env.panes = panesWere; env.spaces = spacesWere; env.agents = agentsWere; env.terminals = termsWere;
   }
 
   // T3's alert dialog: its buttons run the command or only close, Enter runs it, Esc only closes.

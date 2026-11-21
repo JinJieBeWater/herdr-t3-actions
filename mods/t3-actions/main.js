@@ -161,7 +161,7 @@ export default class Actions extends View {
     if (props()?.overlay) layerClosed(props().overlay);
   }
 
-  render() {
+  render(cx) {
     const overlay = props()?.actions;
     if (overlay === "menu") return actionsMenu(this);
     if (overlay === "open-in") return openInMenu(this);
@@ -169,7 +169,7 @@ export default class Actions extends View {
     if (overlay === "details-items") return detailsItemsMenu(this);
     if (overlay === "edit") return editorView(this);
     if (overlay === "confirm") return confirmView(this);
-    if (overlay === "clean-up") return cleanUpView(this);
+    if (overlay === "clean-up") return cleanUpView(this, cx);
     if (overlay === "details") return detailsView(this);
     if (overlay === "review-scope") return rangeMenu(this);
     if (overlay === "review-commits") return commitsMenu(this);
